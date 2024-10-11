@@ -1229,6 +1229,12 @@ hist(np_p2_brms$b_scalestim_iter, breaks=100)
 ```
 
 
+```{r}
+length(which(np_p1_brms$b_scalestim_iter < 0))/length(np_p1_brms$b_scalestim_iter)
+length(which(np_p2_brms$b_scalestim_iter < 0))/length(np_p2_brms$b_scalestim_iter)
+```
+
+
 ## Testing effects  
 
 ```{r}
