@@ -1,0 +1,2754 @@
+---
+title: "Key Results to Accompany Approach-Avoid RLWM Paper"    
+date: "`r Sys.Date()`"
+author: "Peter Frank Hitchcock - Translational Lab, Emory University"
+output:
+  html_document:
+    toc: true
+---
+
+# Set up packages, function sourcing, and plotting parameters   
+
+```{r}
+sapply(c(
+         "rjson", 
+         "data.table", 
+         "dplyr", 
+         "ggplot2", 
+         "stringr", 
+         "purrr", 
+         "foreach", 
+         "patchwork", 
+         "testit",
+         "lme4", 
+         "lmerTest", 
+         "latex2exp",
+         "brms"#,
+         #"tidybayes" # Patchwork/tidybayes ggplot dependency conflict, so source tidybayes directly  
+         ), 
+       require, character=TRUE)
+sf <- function() invisible(sapply(paste0("./Functions/", list.files("./Functions/", recursive=TRUE)), source)) # Source all fxs
+sf()
+DefPlotPars()
+```
+
+# Behavioral data  
+
+```{r}
+packageVersion("brms")
+```
+
+**Note: These and other code paths need to be adjusted / dir structure needs to be reconstructed for public data. The public data also excludes demographics and, due to file size, simulations (simulations can be rerun using `s.R`)**      
+
+Read in learn and test df  
+```{r}
+learn_df <- read.csv("../data/learn_df.csv")
+test_df <- read.csv("../data/test_df.csv")
+```
+
+```{r}
+demogs <- read.csv("../data/demogs_deident.csv")
+```
+
+Demographics  
+```{r}
+summary(demogs$Age)
+mean(demogs$Age); sd(demogs$Age)
+```
+
+
+```{r}
+table(demogs$Sex)
+cat("\n Percent female, male, expired, Prefer not to say: \n",
+    139/nrow(demogs),
+    133/nrow(demogs),
+    1/nrow(demogs),
+    3/nrow(demogs))
+```
+
+
+```{r}
+table(demogs$Ethnicity.simplified)
+cat("\n % Asian, Black,      expired,   Mixed,     Other,     White: \n",
+    12/nrow(demogs),
+    26/nrow(demogs),
+    4/nrow(demogs),
+    19/nrow(demogs),
+    12/nrow(demogs),
+    203/nrow(demogs)
+    )
+```
+
+Mean delay by set size  
+
+```{r}
+learn_df %>% group_by(set_size) %>% summarize(mean(delay, na.rm=TRUE))
+```
+
+Load parameter results from best model  
+
+```{r}
+## Write into one file and confirm 8/1/24 bug fix was minor 
+# 11325 and 15031 are the 8/1/24 runs with the minor bug/illogical scaling of epsilon correct
+# m35_v1 <- read.csv("../model_res/opt/best/BEST__RunRLWMPRew11325.csv")
+# m35_v2 <- read.csv("../model_res/opt/best/BEST__RunRLWMPRew15031.csv")
+#ComparePars(m35_v1$nll, m35_v2$nll) # confirm essentially identical  
+#m35 <- rbind(m35_v1, m35_v2) %>% group_by(ID) %>% slice(which.min(nll)) 
+# And basically identical to older version confirming was a minor bug  
+# m35_old <- read.csv("../model_res/opt/best/before_8-1-reruns/BEST_m35_RunRLWMPRew.csv")
+# ComparePars(m35$nll, m35_old$nll) # confirm essentially identical  
+#write.csv(m35, "../model_res/opt/best/BEST__m35_RunRLWMPRew-8-1-24-epsilonfixed.csv")
+```
+
+```{r}
+m35 <- read.csv("../model_res/opt/best/BEST__m35_RunRLWMPRew-8-1-24-epsilonfixed.csv") # the final model with the bug/nonsensical implementation of epsilon fixed on 8/1
+```
+
+
+
+```{r}
+learn_m <- learn_df %>% group_by(ID) %>% summarize(m=mean(correct))
+test_m <- test_df %>% group_by(ID) %>% summarize(m=mean(correct))
+
+assert(all(learn_m$ID==m35$ID))
+assert(all(test_m$ID==m35$ID))
+```
+
+
+And simulations from model  
+
+```{r}
+m35_s <- 
+  read.csv("../model_res/sims/SIM_RunRLWMPRew53679.csv")
+```
+
+N simulations  
+```{r}
+length(unique(m35_s$iter)) 
+```
+
+```{r}
+m35_s_learn <- m35_s %>% filter(type=="learning")
+m35_s_test <- m35_s %>% filter(type=="test")
+```
+
+
+
+# Figure 2 and associated stats — correct (ie. reward) learning curves and capture by model, RT, and train-test correlation by set size    
+
+## Plot the empirical proportion correct and its capture by the model   
+
+
+
+```{r}
+pcor_ss <- data.frame(learn_df %>% 
+                        group_by(set_size, stim_iter, ID) %>% summarize(m=mean(correct)))
+
+pcor_ss_err <- Rmisc::summarySEwithin(pcor_ss,
+                        measurevar = "m",
+                        withinvars = c("set_size", "stim_iter"),
+                        idvar = "ID")
+
+pcor_ss_m <- data.frame(learn_df %>%
+                        group_by(set_size, stim_iter) %>% summarize(m=mean(correct)))
+
+emp_p1 <- ggplot(pcor_ss_err, aes(x=stim_iter, y=m, group=as.factor(set_size), color=as.factor(set_size))) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin=m-se, ymax=m+se), fill='gray57', alpha=.45) + 
+          geom_hline(yintercept=.33, size=1.5, color="gray57") + # chance line 
+          geom_hline(yintercept=c(.5, .6, .7, .8, .9, 1), linetype="dotted") +
+          geom_vline(xintercept=c(2, 5, 8, 10), linetype="dotted") +
+          geom_point(aes(fill=as.factor(set_size)), color="black", size=5, pch=21) + 
+  annotate("rect", xmin=6, xmax=10.5, ymin=.3, ymax=1.1, alpha=0.2, fill="gray57") +
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("Proportion correct") + tol + 
+  ggtitle("Empirical") + tp
+```
+
+
+```{r}
+# Confirm summarySEwithin m and un-normed one are essentially the same 
+pcor_ss_m <- data.frame(learn_df %>%
+                        group_by(set_size, stim_iter) %>% summarize(m=mean(correct)))
+
+assert(all(round(pcor_ss_err$m, 4)==round(pcor_ss_m$m, 4)))
+```
+
+```{r}
+pcor_ss_sim_m35 <- data.frame(m35_s_learn %>% group_by(set_size, stim_iter) %>%
+                        summarize(m=mean(corrects), n()))
+
+pcor_ss_sim_m35_iter <- data.frame(m35_s_learn %>% filter(iter %in% c(1:30)) %>%  group_by(stim_iter, set_size, iter) %>%
+                        summarize(m=mean(corrects), n()))
+
+sim_m35_p1 <- 
+  ggplot(pcor_ss_sim_m35, aes(x=as.factor(stim_iter), y=m, group=as.factor(set_size), color=as.factor(set_size))) + 
+  geom_line() + 
+  geom_hline(yintercept=.33, size=1.5, color="gray57") + # chance line 
+  geom_hline(yintercept=c(.5, .6, .7, .8, .9, 1), linetype="dotted") +
+  geom_vline(xintercept=c(2, 5, 8, 10), linetype="dotted") +
+  geom_jitter(data=pcor_ss_sim_m35_iter, aes(fill=as.factor(set_size)), color="black", height=0, width=.2, alpha=1,  size=2, pch=21) + 
+  geom_point(aes(fill=as.factor(set_size)), color="black", size=6, pch=21, alpha=.7) + 
+  annotate("rect", xmin=6, xmax=10.5, ymin=.3, ymax=1.1, alpha=0.2, fill="gray57") +
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("") + 
+  tp + ggtitle("Simulated")
+```
+
+
+
+```{r}
+emp_sim_perf <- emp_p1 + sim_m35_p1 
+```
+
+
+```{r, fig.height=6, fig.width=11}
+emp_sim_perf
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/fig2_emp_sim_perf.png", emp_sim_perf, height = 3.5, width=11, dpi=300)
+```
+
+
+Before/after break regressor  
+
+```{r}
+end_p1_begin_p2_df <- learn_df %>% filter(stim_iter %in% c(5, 6))
+#end_p1_begin_p2_df$before_after_break <- end_p1_begin_p2_df$stim_iter
+end_p1_begin_p2_df[end_p1_begin_p2_df$stim_iter==5, "before_after_break"] <- -1
+end_p1_begin_p2_df[end_p1_begin_p2_df$stim_iter==6, "before_after_break"] <- 1
+```
+
+## Statistical models of performance effect   
+
+
+Main effects of set size and stim iter and interaction reflecting parametric effect over time in both phase 1 and phase 2  
+
+```{r}
+summary(pcor_phase_1_v2 <-
+          glmer(correct ~ scale(set_size)*scale(stim_iter) + 
+                (scale(set_size)*scale(stim_iter)|ID), 
+                data=learn_df %>% filter(phase==1), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))  
+
+summary(pcor_phase_2_v2 <- 
+          glmer(correct ~ scale(set_size)*scale(stim_iter) + 
+                  (scale(set_size)*scale(stim_iter)|ID), 
+                data=learn_df %>% filter(phase==2), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))  
+
+# Singular
+# summary(pcor_before_after <- 
+#           glmer(correct ~ scale(set_size)*scale(before_after_break) + 
+#                   (scale(set_size)*scale(before_after_break)|ID), 
+#                 data=end_p1_begin_p2_df, 
+#                 family="binomial", control = glmerControl(optimizer = "bobyqa")))  
+
+summary(pcor_before_after <- 
+          glmer(correct ~ scale(set_size)*scale(before_after_break) + 
+                  (scale(set_size) + scale(before_after_break)|ID), 
+                data=end_p1_begin_p2_df, 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))  
+```
+```{r}
+car::vif(pcor_before_after)
+```
+
+
+```{r}
+car::vif(pcor_phase_2_v2)
+```
+
+
+```{r}
+car::vif(pcor_phase_1_v2)
+```
+
+Logistic model predictions are a bit mis-specified but decent    
+
+```{r}
+sjPlot::plot_model(pcor_phase_1_v2, 
+                   type = "pred", terms = c("stim_iter", "set_size")) + 
+  ga + ap + lp + tp + xlab("Stimulus iteration") + 
+  ylab("Proportion correct") + ggtitle("Phase 1 regression model predictions")
+```
+
+
+```{r}
+sjPlot::tab_model(pcor_phase_1_v2)
+```
+
+```{r}
+sjPlot::plot_model(pcor_phase_2_v2, 
+                   type = "pred", terms = c("stim_iter", "set_size")) + 
+  ga + ap + lp + tp + xlab("Stimulus iteration") + 
+  ylab("Proportion correct") + ggtitle("Phase 2 regression model predictions")
+```
+
+```{r}
+sjPlot::tab_model(pcor_phase_2_v2)
+```
+
+```{r}
+pcor_before_after_p <- sjPlot::plot_model(pcor_before_after, 
+                   type = "pred", terms = c("before_after_break", "set_size")) + 
+  ga + ap + lp + tp + xlab("Stimulus iteration") + 
+  ylab("Proportion correct") + ggtitle("Before to after break regression model predictions")
+pcor_before_after_p 
+```
+
+```{r}
+sjPlot::tab_model(pcor_before_after)
+```
+
+```{r}
+#ggsave("../paper/figs/supp-figs/pcor_before_after_p.png", pcor_before_after_p, height = 5, width=11, dpi=300)
+```
+
+## Reaction times during the learning phase   
+
+Trial 1 so there's def no S-A-O load on WM  
+
+```{r}
+rt_trial_1 <- data.frame(learn_df %>% filter(stim_iter==1) %>% 
+                           group_by(set_size, ID) %>% summarize(m=mean(rt)))
+
+rt_trial_1_m <- data.frame(learn_df %>% filter(stim_iter==1) %>% 
+                           group_by(set_size) %>% summarize(m=mean(rt)))
+
+rt_tr1_err <- Rmisc::summarySEwithin(rt_trial_1,
+                        measurevar = "m",
+                        withinvars = c("set_size"),
+                        idvar = "ID")
+
+assert(all(round(rt_tr1_err$m, 4)==round(rt_trial_1_m$m, 4)))
+```
+
+```{r}
+emp_rt_tr_1 <- ggplot(rt_tr1_err , 
+         aes(x=set_size, y=m, group=as.factor(set_size), fill=as.factor(set_size))) + 
+  geom_errorbar(aes(x=set_size, ymin=m-se, ymax=m+se), size=1.5, width=.25) +
+  geom_point(size=6, pch=21, color="black", alpha=.7) + 
+  
+  ga + ap + lp + xlab("Set size") + ylab("") + 
+  ggtitle("At trial 1") + tp + tol#+ ylim(600, 900)
+```
+
+
+```{r}
+rt_ss_si6 <- data.frame(learn_df %>% filter(stim_iter==6) %>%  
+                          group_by(set_size, ID) %>% summarize(m=mean(rt)))
+
+rt_ss_si6_m <- data.frame(learn_df %>% filter(stim_iter==6) %>%  
+                          group_by(set_size) %>% summarize(m=mean(rt)))
+
+
+rt_ss_si6_err <- Rmisc::summarySEwithin(rt_ss_si6,
+                        measurevar = "m",
+                        withinvars = c("set_size"),
+                        idvar = "ID")
+
+assert(all(round(rt_ss_si6_err$m, 4)==round(rt_ss_si6_m$m, 4)))
+```
+
+```{r}
+emp_rt_si_6 <- ggplot(rt_ss_si6_err , 
+         aes(x=set_size, y=m, group=as.factor(set_size), fill=as.factor(set_size))) + 
+  
+  
+  geom_errorbar(aes(x=set_size, ymin=m-se, ymax=m+se), size=1.5, width=.25) +
+  geom_point(size=6, pch=21, color="black", alpha=.7) + 
+  
+  ga + ap + lp + xlab("Set size") + ylab("") + 
+  ggtitle("At stimulus iteration 6") + tp  + tol
+```
+
+
+```{r}
+rt_ss_si6_df <- data.frame(learn_df %>% filter(stim_iter==6))
+```
+
+```{r}
+rt_ss_si6_df$set_size_indicator <- if_else(rt_ss_si6_df$set_size==1, 1, -1)
+# Reduced because model without RE did not converge 
+summary(rt_ss_si6_df_model <- 
+          lmer(rt ~ set_size_indicator + (1|ID), data=rt_ss_si6_df))
+```
+
+```{r}
+rt_ss <- data.frame(learn_df %>% group_by(set_size, stim_iter, ID) %>% summarize(m=mean(rt)))
+
+rt_ss_m <- data.frame(learn_df %>% 
+                        group_by(set_size, stim_iter) %>% summarize(m=mean(rt))) 
+
+rt_ss_err <- Rmisc::summarySEwithin(rt_ss,
+                        measurevar = "m",
+                        withinvars = c("set_size", "stim_iter"),
+                        idvar = "ID")
+
+assert(all(round(rt_ss_err$m, 4)==round(rt_ss_m$m, 4)))
+
+emp_rt <- 
+  ggplot(rt_ss_err, aes(x=stim_iter, y=m, group=as.factor(set_size), color=as.factor(set_size))) + 
+  
+  geom_line() +
+  geom_ribbon(aes(ymin=m-se, ymax=m+se), fill='gray57', alpha=.45) +
+          geom_vline(xintercept=c(3, 7, 9), linetype="dotted") +
+
+          geom_point(aes(fill=as.factor(set_size)), color="black", size=5, pch=21) +
+  annotate("rect", xmin=6, xmax=10.5, ymin=300, ymax=850, alpha=0.2, fill="gray57") +
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("Reaction time") + tol #+ 
+  #ggtitle("") + tp #+ ylim(300, 900)
+```
+
+
+
+```{r}
+rt_ss_d0_r1 <- 
+  data.frame(learn_df %>% filter(delay==0 & past_reward == 1) %>% 
+               group_by(set_size, stim_iter, ID) %>% summarize(m=mean(rt)))
+
+rt_ss_d0_r1_m <-   data.frame(learn_df %>% filter(delay==0 & past_reward == 1) %>% 
+               group_by(set_size, stim_iter) %>% summarize(m=mean(rt)))
+
+  
+rt_ss_err_d0_r1 <- Rmisc::summarySEwithin(rt_ss_d0_r1,
+                        measurevar = "m",
+                        withinvars = c("set_size", "stim_iter"),
+                        idvar = "ID")
+
+assert(all(round(rt_ss_err_d0_r1$m, 4)==round(rt_ss_err_d0_r1$m, 4)))
+
+emp_rt_d0_r1 <- ggplot(rt_ss_err_d0_r1, aes(x=stim_iter, y=m, group=as.factor(set_size), color=as.factor(set_size))) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin=m-se, ymax=m+se), fill='gray57', alpha=.45) + 
+          geom_vline(xintercept=c(2, 5, 7), linetype="dotted") +
+          geom_point(aes(fill=as.factor(set_size)), color="black", size=5, pch=21) + 
+  annotate("rect", xmin=5, xmax=8.5, ymin=300, ymax=630, alpha=0.2, fill="gray57") +
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("") + 
+  ggtitle("When prior reward and no delay") + tp + tol #+ ylim(300, 900) 
+```
+
+
+```{r}
+rt_nodrew <- learn_df %>% filter(delay==0 & past_reward == 1)
+summary(rt_nodrew_model <- 
+          lmer(rt ~ scale(set_size) + (scale(set_size)|ID), data=rt_nodrew))
+```
+
+```{r}
+all_rt <- 
+  emp_rt + emp_rt_d0_r1 + emp_rt_tr_1 + emp_rt_si_6 + plot_annotation(title="Empirical reaction time", theme = theme(plot.title = element_text(size = 25, hjust=.5)))#, size=10)
+```
+
+```{r, fig.height=6, fig.width=12}
+all_rt
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/fig2_emp_rt.png", all_rt, height = 6, width=11, dpi=300)
+```
+
+Confirms strong set size effect even at first stim iter — suggesting different **proactive** strategies  
+
+```{r}
+summary(rt_si_1 <- 
+          lmer(rt ~ scale(set_size) + (scale(set_size)|ID), data=learn_df %>% filter(stim_iter==1)))
+```
+ 
+ 
+
+```{r}
+sjPlot::tab_model(rt_si_1)
+```
+
+Regression models in phase 1 and phase 2 show main effects of set size and stim iter and an interaction in both phases   
+
+(REs complexity reduce due to convergence failure with full)     
+
+```{r}
+summary(rt_p1 <- 
+          lmer(rt ~ scale(set_size)*scale(stim_iter) + 
+                 (scale(set_size) + scale(stim_iter)|ID), 
+               data=learn_df %>% filter(phase==1)))
+```
+
+
+```{r}
+sjPlot::tab_model(rt_p1)
+```
+
+```{r}
+sjPlot::plot_model(rt_p1, type = "pred", terms = c("stim_iter", "set_size")) + 
+  ga + ap + lp + tp + xlab("Stimulus iteration") + ylab("Reaction time") + ggtitle("Phase 1 regression model predictions")
+```
+
+```{r}
+summary(rt_p2 <-lmer(rt ~ scale(set_size)*scale(stim_iter) + (scale(set_size) + scale(stim_iter)|ID), data=learn_df %>% filter(phase==2)))
+```
+
+```{r}
+car::vif(rt_p1)
+```
+
+```{r}
+car::vif(rt_p2)
+```
+
+```{r}
+sjPlot::tab_model(rt_p2)
+```
+
+```{r}
+sjPlot::plot_model(rt_p2, type = "pred", terms = c("stim_iter", "set_size")) + 
+  ga + ap + lp + tp + xlab("Stimulus iteration") + ylab("Reaction time") + ggtitle("Phase 2 regression model predictions")
+```
+
+ 
+
+
+## Correlation between learning and test phase  
+
+```{r}
+learn_ms <- data.frame(learn_df %>% 
+                         group_by(ID, set_size) %>% summarize(learn_m=mean(correct)))
+
+test_ms <- data.frame(test_df %>% 
+                        group_by(ID, set_size) %>% summarize(test_m=mean(correct)))
+
+assert(all(test_ms$ID==learn_ms$ID))
+```
+
+
+```{r}
+test_ms$learn_m <- learn_ms$learn_m
+```
+
+
+```{r, fig.width=11, fig.height=3}
+emp_corrs <- ggplot(test_ms, 
+                    aes(x=learn_m, y=test_m, color=as.factor(set_size))) + 
+  geom_jitter(alpha=.4, size=2, width=.02) + 
+  ggpubr::stat_cor(method="spearman", size=5, label.y=1.12) + ga + ft + ap + 
+  xlab("Learning") + ylab("Test") + facet_wrap(~ set_size, nrow=1) + tol + 
+  xlim(0, 1) + ylim(0, 1.17)  + 
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) + 
+  ggtitle("Proportion correct correlation \n Empirical") + tp
+```
+
+
+Take one simulation iter to match number used empirically and not "smooth" by more sims  
+
+```{r}
+learn_ms_s <- data.frame(m35_s_learn %>% filter(iter==1) %>%  group_by(ID, set_size) %>% summarize(learn_m=mean(corrects)))
+
+test_ms_s <- data.frame(m35_s_test %>%  filter(iter==1) %>% group_by(ID, set_size) %>% summarize(test_m=mean(corrects)))
+
+assert(all(test_ms_s$ID==learn_ms_s$ID))
+
+test_ms_s$learn_m <- learn_ms_s$learn_m
+
+sim_corrs <- ggplot(test_ms_s, aes(x=learn_m, y=test_m, color=as.factor(set_size))) + geom_jitter(alpha=.4, size=2, width=.0) + 
+  ggpubr::stat_cor(method="spearman", size=5, label.y=1.12) + ga + ft + ap + 
+  xlab("Learning") + ylab("Test") + facet_wrap(~ set_size, nrow=1) + tol + 
+  xlim(0, 1) + ylim(0, 1.17)  +
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) + 
+  ggtitle("Simulated") + tp
+```
+
+A few missing due to jitter and divide by 0  
+```{r, fig.width=11, fig.height=6}
+all_corrs <- emp_corrs / sim_corrs
+```
+
+```{r, fig.width=11, fig.height=7}
+all_corrs
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/fig2_perf_corrs.png", all_corrs, height = 6, width=11, dpi=300)
+```
+
+
+# Test correct (ie. reward)  
+
+Empirical   
+
+```{r}
+p1_test_trials <- test_df %>% filter(phase==1)
+p2_test_trials <- test_df %>% filter(phase==2)
+
+pcor_p1_test <- 
+  data.frame(p1_test_trials %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+pcor_p2_test <- 
+  data.frame(p2_test_trials %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+
+pcor_si6 <- learn_df %>% filter(stim_iter==6) %>% 
+  group_by(set_size, ID) %>% summarize(m=mean(correct))
+
+
+pcor_p1_test_err <- Rmisc::summarySEwithin(pcor_p1_test,
+                        measurevar = "m",
+                        withinvars = c("set_size"),
+                        idvar = "ID")
+
+pcor_si6_err <- Rmisc::summarySEwithin(pcor_si6,
+                        measurevar = "m",
+                        withinvars = c("set_size"),
+                        idvar = "ID")
+
+pcor_p2_test_err <- Rmisc::summarySEwithin(pcor_p2_test,
+                        measurevar = "m",
+                        withinvars = c("set_size"),
+                        idvar = "ID")
+
+# Continuing to sanity check summarSEwithin 
+pcor_p1_test_m <- 
+  data.frame(p1_test_trials %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_p2_test_m <- 
+  data.frame(p2_test_trials %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_si6_m <- learn_df %>% filter(stim_iter==6) %>% 
+  group_by(set_size) %>% summarize(m=mean(correct))
+
+assert(all(round(pcor_p1_test_err$m, 4)==round(pcor_p1_test_m$m, 4)))
+assert(all(round(pcor_p2_test_err$m, 4)==round(pcor_p2_test_m$m, 4)))
+assert(all(round(pcor_si6_err$m, 4)==round(pcor_si6_m$m, 4)))
+
+emp_p1_test <- ggplot(pcor_p1_test_err, aes(x=set_size, y=m, fill=set_size)) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_errorbar(aes(ymin=m-se, ymax=m+se), width=.2) + 
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Test phase 1")
+
+emp_si6 <- ggplot(pcor_si6_err, aes(x=set_size, y=m, fill=set_size)) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_errorbar(aes(ymin=m-se, ymax=m+se), width=.2) + 
+  ga + ap + xlab("Set size") + ylab("") + tol + ylim(0, 1) + 
+  tp + ggtitle("Stimulus iteration 6")
+
+emp_p2_test <- ggplot(pcor_p2_test_err, aes(x=set_size, y=m, fill=set_size)) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_errorbar(aes(ymin=m-se, ymax=m+se), width=.2) + 
+  ga + ap + xlab("Set size") + ylab("") + tol + ylim(0, 1) + tp +
+  ggtitle("Test phase 2")
+```
+
+U-shaped pattern evident at test phase 1, which replicates at the beginning of the next learning phase (stimulus iteration 6) before there has been a chance for further learning (thus making it effectively another test trial)  
+
+The effect then appears to reduce substantially by test phase 2 — with stim iter 1 still decreased, but set size 2 if anything higher than the others  
+
+```{r, fig.height=4, fig.width=11}
+emps_u_plot <- 
+  emp_p1_test + emp_si6 + emp_p2_test + plot_annotation(title="Empirical", theme = theme(plot.title = element_text(size = 25, hjust=.5)))#,
+```
+
+```{r, fig.height=4, fig.width=11}
+emps_u_plot
+```
+
+
+Simulation plots  
+
+```{r}
+pcor_p1_test_sim_m35 <- 
+  data.frame(m35_s_test %>% filter(phase==1) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_p1_test_sim_m35_iters <- 
+  data.frame(m35_s_test %>% filter(phase==1) %>% group_by(set_size, iter) %>% summarize(m=mean(corrects)))
+
+pcor_si6_sim_m35 <- 
+  data.frame(m35_s_learn %>% filter(stim_iter==6) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_si6_sim_m35_iters <- 
+  data.frame(m35_s_learn %>% filter(stim_iter==6) %>% group_by(set_size, iter) %>% summarize(m=mean(corrects)))
+
+pcor_p2_test_sim_m35 <- 
+  data.frame(m35_s_test %>% filter(phase==2) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_p2_test_sim_m35_iters <- 
+  data.frame(m35_s_test %>% filter(phase==2) %>% group_by(set_size, iter) %>% summarize(m=mean(corrects)))
+
+sim_p1_test_m35 <- 
+ggplot(pcor_p1_test_sim_m35, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=pcor_p1_test_sim_m35_iters, size=2, alpha=1, width=.08, height=0, pch=21,
+              aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Test phase 1")
+
+sim_si6_m35 <- ggplot(pcor_si6_sim_m35, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=pcor_si6_sim_m35_iters, size=2, alpha=1, width=.08, height=0, pch=21,
+              aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) +
+  ga + ap + xlab("Set size") + ylab("") + tol + ylim(0, 1) + 
+  tp + ggtitle("Stimulus iteration 6")
+
+sim_p2_test_m35 <- ggplot(pcor_p2_test_sim_m35, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=pcor_p2_test_sim_m35_iters, size=2, alpha=1, width=.08, height=0, pch=21,
+              aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) +
+  ga + ap + xlab("Set size") + ylab("") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Test phase 2")
+```
+
+
+```{r, fig.height=4, fig.width=11}
+sims_u_plot <- 
+  sim_p1_test_m35 + sim_si6_m35 + sim_p2_test_m35 + plot_annotation(title="Simulated", theme = theme(plot.title = element_text(size = 25, hjust=.5)))#,
+```
+
+```{r, fig.height=5, fig.width=11}
+sims_u_plot
+```
+
+
+```{r}
+# ggsave("../paper/figs/pieces/fig3_empU.png", emps_u_plot, height = 4, width=11, dpi=300)
+#ggsave("../paper/figs/pieces/fig3_simU.png", sims_u_plot, height = 4, width=11, dpi=300)
+```
+
+
+
+```{r}
+summary(pcor_p1_test_quad <- 
+          glmer(correct ~ poly(set_size, 2)  + 
+                        (poly(set_size, 2)|ID), 
+                data=test_df %>% filter(phase==1), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+Predictions look reasonable and do fit a clear inverted U  
+
+
+```{r}
+sjPlot::tab_model(pcor_p1_test_quad)
+```
+
+```{r}
+pcor_p1_test_quad_p <- sjPlot::plot_model(pcor_p1_test_quad, type = "pred", 
+                   terms = c("set_size [all]")) + 
+  ga + ap + lp + tp + xlab("Set size") + 
+  ylab("Proportion correct") + ggtitle("Quadratic model regression predictions \n Phase 1 test")
+pcor_p1_test_quad_p
+```
+
+Stimulus iteration 6 replicates effect  
+```{r}
+summary(pcor_si6_quad <- 
+          glmer(correct ~ poly(set_size, 2)  + 
+                  (poly(set_size, 2)|ID), 
+                data=learn_df %>% filter(stim_iter==6), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+```{r}
+pcor_si6_quad_p <- sjPlot::plot_model(pcor_si6_quad, 
+                   type = "pred", terms = c("set_size")) + 
+  ga + ap + lp + tp + xlab("Set size") + 
+  ylab("Proportion correct") + 
+  ggtitle("Quadratic model regression predictions \n Stim iter 6")
+pcor_si6_quad_p 
+```
+
+
+```{r}
+sjPlot::tab_model(pcor_si6_quad)
+```
+
+Neither linear nor quadratic signif effects  
+
+```{r}
+summary(pcor_p2_test_quad <- 
+          glmer(correct ~ poly(set_size, 2)  + 
+                  (poly(set_size, 2)|ID),
+                data=test_df %>% filter(phase==2), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+
+
+```{r}
+sjPlot::tab_model(pcor_p2_test_quad)
+```
+
+```{r}
+pcor_p2_quad_p  <- sjPlot::plot_model(pcor_p2_test_quad, 
+                   type = "pred", terms = c("set_size [all]")) + 
+  ga + ap + lp + tp + xlab("Set size") + 
+  ylab("Proportion correct") + 
+  ggtitle("Quadratic model regression \npredictions \n Phase 2 test") 
+pcor_p2_quad_p
+```
+
+
+```{r, fig.width=16, fig.height=10}
+pcor_p1_test_quad_p + pcor_si6_quad_p +pcor_p2_quad_p 
+```
+
+```{r, fig.width=7}
+pcor_p2_quad_p
+```
+
+
+
+## Using the RL off parameter to capture individual differences in blunting underlying the inverted U  
+
+
+```{r}
+rl_off_p <- 
+  ggplot(m35, aes(x=rl_off)) + 
+  geom_vline(xintercept=median(m35$rl_off), size=4) +  
+  geom_histogram(fill="white", color="black") + ga + ap + ylab("") + 
+    ggtitle(TeX('$\\RL^{off}')) + tp + xlab("")
+```
+
+```{r}
+rl_off_p
+```
+
+
+```{r}
+#ggsave("../paper/figs/pieces/rl_off.png", rl_off_p, height = 4, width=11, dpi=300)
+```
+
+
+## Dividing up empirically into high vs. low blunters  
+```{r}
+little_coop <- data.frame(m35 %>% filter(rl_off < median(m35$rl_off)))$ID
+high_coop <- data.frame(m35 %>% filter(rl_off > median(m35$rl_off)))$ID
+```
+
+
+```{r}
+p1_test_emp_trials_m35_lc <- test_df %>% filter(phase==1 & ID %in% little_coop)
+
+pcor_p1_test_emp_m35_lc <- 
+  data.frame(p1_test_emp_trials_m35_lc %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_p1_test_emp_m35_lc_ID <- 
+  data.frame(p1_test_emp_trials_m35_lc %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+
+p2_test_emp_trials_m35_lc <- test_df %>% filter(phase==2 & ID %in% little_coop)
+pcor_p2_test_emp_m35_lc <- 
+  data.frame(p2_test_emp_trials_m35_lc %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_p2_test_emp_m35_lc_ID <- 
+  data.frame(p2_test_emp_trials_m35_lc %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+
+si6_emp_trials_m35_lc <- learn_df %>% filter(stim_iter==6 & ID %in% little_coop)
+pcor_si6_m35_lc <- 
+  data.frame(si6_emp_trials_m35_lc %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_si6_m35_lc_ID <- 
+  data.frame(si6_emp_trials_m35_lc %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+```
+
+
+```{r}
+emp_p1_test_m35_lc <- ggplot(pcor_p1_test_emp_m35_lc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+    ga + ap + xlab("Set size") + ylab("Proportion correct") + tol +  ylim(-.022, 1.022) + tp +
+    geom_jitter(data=pcor_p1_test_emp_m35_lc_ID, width=.17, height=.02, alpha=.8, aes(color=as.factor(set_size))) + 
+    geom_bar(stat="identity", color="black", alpha=.8) +
+  tp + ggtitle("Test phase 1")
+
+emp_p2_test_m35_lc <- ggplot(pcor_p2_test_emp_m35_lc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+    ga + ap + xlab("Set size") + ylab("Proportion correct") + tol +  ylim(-.022, 1.022) + tp +
+    geom_jitter(data=pcor_p2_test_emp_m35_lc_ID, width=.17, height=.02, alpha=.8, aes(color=as.factor(set_size))) + 
+    geom_bar(stat="identity", color="black", alpha=.8) +
+  tp + ggtitle("Test phase 2")
+
+emp_si6_lc <- 
+  ggplot(pcor_si6_m35_lc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+    geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+    ga + ap + xlab("Set size") + ylab("Proportion correct") + tol +  ylim(-.022, 1.022) + tp +
+    geom_jitter(data=pcor_si6_m35_lc_ID, width=.17, height=.02, alpha=.8, aes(color=as.factor(set_size))) + 
+    geom_bar(stat="identity", color="black", alpha=.8) +
+    tp + ggtitle("Stimulus iteration 6")
+```
+
+
+```{r}
+low_blunt <- emp_p1_test_m35_lc + emp_si6_lc + emp_p2_test_m35_lc
+```
+
+
+
+High blunters  
+
+```{r}
+p1_test_emp_trials_m35_hc <- test_df %>% filter(phase==1 & ID %in% high_coop)
+
+pcor_p1_test_emp_m35_hc <- 
+  data.frame(p1_test_emp_trials_m35_hc %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_p1_test_emp_m35_hc_ID <- 
+  data.frame(p1_test_emp_trials_m35_hc %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+
+p2_test_emp_trials_m35_hc <- test_df %>% filter(phase==2 & ID %in% high_coop)
+pcor_p2_test_emp_m35_hc <- 
+  data.frame(p2_test_emp_trials_m35_hc %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_p2_test_emp_m35_hc_ID <- 
+  data.frame(p2_test_emp_trials_m35_hc %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+
+si6_emp_trials_m35_hc <- learn_df %>% filter(stim_iter==6 & ID %in% high_coop)
+pcor_si6_m35_hc <- 
+  data.frame(si6_emp_trials_m35_hc %>% group_by(set_size) %>% summarize(m=mean(correct)))
+pcor_si6_m35_hc_ID <- 
+  data.frame(si6_emp_trials_m35_hc %>% group_by(set_size, ID) %>% summarize(m=mean(correct)))
+```
+
+
+```{r}
+emp_p1_test_m35_hc <- ggplot(pcor_p1_test_emp_m35_hc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+    ga + ap + xlab("Set size") + ylab("Proportion correct") + tol +  ylim(-.022, 1.022) + tp +
+    geom_jitter(data=pcor_p1_test_emp_m35_hc_ID, width=.17, height=.02, alpha=.8, aes(color=as.factor(set_size))) + 
+    geom_bar(stat="identity", color="black", alpha=.8) #+
+  #tp + ggtitle("Phase 1")
+
+emp_p2_test_m35_hc <- ggplot(pcor_p2_test_emp_m35_hc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+    ga + ap + xlab("Set size") + ylab("Proportion correct") + tol +  ylim(-.022, 1.022) + tp +
+    geom_jitter(data=pcor_p2_test_emp_m35_hc_ID, width=.17, height=.02, alpha=.8, aes(color=as.factor(set_size))) + 
+    geom_bar(stat="identity", color="black", alpha=.8) #+
+#  tp + ggtitle("Phase 2")
+
+emp_si6_hc <- 
+  ggplot(pcor_si6_m35_hc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+    geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+    ga + ap + xlab("Set size") + ylab("Proportion correct") + tol +  ylim(-.022, 1.022) + tp +
+    geom_jitter(data=pcor_si6_m35_hc_ID, width=.17, height=.02, alpha=.8, aes(color=as.factor(set_size))) + 
+    geom_bar(stat="identity", color="black", alpha=.8) #+
+    #tp + ggtitle("Stimulus iteration 6")
+```
+
+
+```{r}
+high_blunt <- emp_p1_test_m35_hc + emp_si6_hc + emp_p2_test_m35_hc
+```
+
+
+
+
+```{r, fig.height=8, fig.width=9}
+low_vs_high <- low_blunt/high_blunt
+```
+```{r, fig.height=8, fig.width=11}
+low_vs_high
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/fig4_lohiblunt.png", low_vs_high, height = 9, width=11, dpi=300)
+```
+
+Put RL off into the test df    
+
+```{r}
+unique_ids <- unique(test_df$ID)
+
+for (i in 1:length(unique_ids)) {
+  test_df[test_df$ID==unique_ids[i], "rl_off"] <- m35[m35$ID==unique_ids[i], "rl_off"]
+}
+# Spot check  
+# test_df %>% filter(ID == 24) %>% select(rl_off)
+# m35 %>% filter(ID == 24) %>% select(rl_off)
+# test_df %>% filter(ID == 85) %>% select(rl_off)
+# m35 %>% filter(ID == 85) %>% select(rl_off)
+# test_df %>% filter(ID == 2) %>% select(rl_off)
+# m35 %>% filter(ID == 2) %>% select(rl_off)
+# test_df %>% filter(ID == 219) %>% select(rl_off)
+# m35 %>% filter(ID == 219) %>% select(rl_off)
+```
+
+```{r}
+
+m_rlo <- mean(m35$rl_off)
+sd_up <- m_rlo +sd(m35$rl_off) # (.5*sd(m35$rl_off))
+sd_down <- m_rlo - sd(m35$rl_off)# (.5*sd(m35$rl_off))
+
+cat("\nMean", m_rlo, "\nOne SD up", sd_up, "\nOne SD down", sd_down)
+#quantile(m35$rl_off, seq(1/3, 1, 1/3))
+```
+
+
+```{r}
+#ggsave("../paper/figs/pieces/fig4_mod_rl_off_p.png", mod_rl_off_p, height = 4, width=8, dpi=300)
+```
+
+```{r}
+summary(pcor_p2_moderation <- 
+          glmer(correct ~ scale(set_size)*scale(rl_off)  + 
+                  (scale(set_size)*scale(rl_off)|ID),
+                data=test_df %>% filter(phase==2), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+```{r}
+car::vif(pcor_p2_moderation)
+```
+
+
+```{r}
+mod_rl_off_p <- sjPlot::plot_model(pcor_p2_moderation, type = "pred", 
+                   terms = c("set_size [all]", "rl_off [.2217, .5447, .8678]")) +
+  ga + ap + lp + tp + xlab("Set size") +
+  ylab("") + 
+  ggtitle("Moderation of set size effect in final test phase \n by RL blunting") + 
+  scale_color_manual(values=c("blue", "gray40", "red"), labels=c("Low", "Medium", "High")) +
+  scale_fill_manual(values=c("blue", "gray40", "red"), labels=c("Low", "Medium", "High"))
+```
+```{r}
+mod_rl_off_p
+```
+
+```{r}
+sjPlot::tab_model(pcor_p2_moderation)
+```
+
+Low vs. high low set sizes percents reported in paper  
+
+
+```{r}
+mean(pcor_p1_test_emp_m35_hc[1:3, "m"])
+mean(pcor_p1_test_emp_m35_lc[1:3, "m"])
+```
+
+```{r}
+mean(pcor_si6_m35_hc[1:3, "m"])
+mean(pcor_si6_m35_lc[1:3, "m"])
+```
+
+```{r}
+mean(pcor_p2_test_emp_m35_hc[1:3, "m"])
+mean(pcor_p2_test_emp_m35_lc[1:3, "m"])
+```
+
+Low vs. high high set sizes  
+```{r}
+mean(pcor_p1_test_emp_m35_hc[4:5, "m"])
+mean(pcor_p1_test_emp_m35_lc[4:5, "m"])
+```
+
+```{r}
+mean(pcor_si6_m35_hc[4:5, "m"])
+mean(pcor_si6_m35_lc[4:5, "m"])
+```
+
+```{r}
+mean(pcor_p2_test_emp_m35_hc[4:5, "m"])
+mean(pcor_p2_test_emp_m35_lc[4:5, "m"])
+```
+
+
+Checking low vs. high asymptotic performance — set sizes 1 and 2 are very comparable 
+
+```{r}
+lc_asym <- learn_df %>% filter(stim_iter==10 & ID %in% little_coop) %>% group_by(set_size) %>% summarize(m=mean(correct))
+```
+
+
+```{r}
+hc_asym <- learn_df %>% filter(stim_iter==10 & ID %in% high_coop) %>% group_by(set_size) %>% summarize(m=mean(correct))
+```
+
+```{r}
+mean(unlist(lc_asym[1:3, "m"]))
+mean(unlist(hc_asym[1:3, "m"]))
+mean(lc_asym[1:3, "m"])
+```
+
+
+RL off is not much correlated with WM pars  
+```{r}
+ComparePars(m35$rl_off, m35$phi, use_identity_line = 0)
+ComparePars(m35$rl_off, m35$kappa, use_identity_line = 0)
+ComparePars(m35$rl_off, m35$rho, use_identity_line = 0)
+```
+
+
+# Incorrect trials  
+
+## Neutral (over worst) preference at learning and test  
+
+A key change in this task from the classic RLWM was having punishment | neutral | reward bandit arms instead of just reward | neutral | neutral.  But it's possible that pts would focus on maximizing reward and not make much distinguish  punishment vs. neutral. The below examine neutral > punishment preference during learning and test (retention).  
+
+
+```{r}
+learn_error_df <- learn_df %>% filter(correct==0)
+
+np_summs_m <- learn_error_df %>% group_by(stim_iter) %>% 
+  summarize(mw=mean(worst), mn=mean(neutral), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+# Within-subject adjusted mean and raw don't agree presumably because of amount of 
+# variation given sparsity of errors/subject so will just use the raw means for plotting
+# so can do accurate compare to model preds  
+# np_si <- Rmisc::summarySEwithin(np_summs,
+#                         measurevar = "neutral_pref",
+#                         withinvars = c("stim_iter"),
+#                         idvar = "ID")
+
+# These do disagree before this decimal point   
+# round(np_summs_m$neutral_pref, 4)
+# round(np_si$neutral_pref, 4)
+
+emp_np_si_plot <- 
+  ggplot(np_summs_m, aes(x=stim_iter, y=neutral_pref, fill=as.numeric(stim_iter))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  geom_bar(stat="identity", color="black") + 
+  
+  #geom_errorbar(aes(ymin=neutral_pref-se, ymax=neutral_pref+se), width=.2) +
+    geom_bar(data=np_summs_m,
+             aes(x=stim_iter, y=neutral_pref, fill=as.numeric(stim_iter)),
+  stat="identity", color="black", alpha=.85) +
+  annotate("rect", xmin=5.5, xmax=10.5, ymin=0, ymax=.22, alpha=0.2, fill="gray57") +
+  annotate("text", x=3, y=.20, label="Phase 1", size=8) +
+  annotate("text", x=7.5, y=.20, label="Phase 2", size=8) +
+  ga + ap + tol + xlab("Simulus iteration") + ylab("") + tp + 
+  ggtitle("Empirical") + scale_color_gradient2() + ylim(-.1, .23)
+emp_np_si_plot
+  #move_layers(emp_np_si_plot, "GeomPoint", position = "top")
+```
+
+
+
+
+Capture by sims 
+
+
+```{r}
+np_si_sims_summs <- m35_s %>% 
+  filter(type=="learning" & corrects==0) %>% group_by(stim_iter) %>% #filter(stim_iter %in% c(2:10)) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+np_si_sims_summs_var <- m35_s %>% 
+  filter(type=="learning" & corrects==0) %>%  group_by(stim_iter, iter) %>%  #filter(stim_iter %in% c(2:10)) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+m35_np_si_plot <- ggplot(np_si_sims_summs, 
+                         aes(x=stim_iter, y=neutral_pref, fill=as.numeric(stim_iter))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=np_si_sims_summs_var, aes(x=stim_iter, y=neutral_pref), height=0,
+              width=.2, pch=21) +
+  annotate("rect", xmin=5.5, xmax=10.5, ymin=0, ymax=.22, alpha=0.2, pch=21) +
+  annotate("text", x=3, y=.20, label="Phase 1", size=8) +
+  annotate("text", x=7.5, y=.20, label="Phase 2", size=8) +
+  ga + ap + tol + xlab("Simulus iteration") + ylab("") + tp + 
+  ylim(-.05, .23) +
+  ggtitle("Simulated") + scale_color_gradient2() +
+  scale_x_continuous(breaks=seq(1, 10, 1)) + ylim(-.1, .23)
+m35_np_si_plot
+```
+
+
+Simulation w no punish bonus off  
+
+```{r}
+m35_luu <- read.csv("../model_res/sims/SIM_RunRLWMPRewLesionNotPun67064.csv") # Updated non-bug 8-1-24 model  
+```
+
+
+```{r}
+np_si_sims_summs_luu <- m35_luu  %>% 
+  filter(type=="learning" & corrects==0) %>% group_by(stim_iter) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+np_si_sims_summs_var_luu <- m35_luu %>% 
+  filter(type=="learning" & corrects==0) %>%  group_by(stim_iter, iter) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+m35_np_si_luu_plot <- 
+  ggplot(np_si_sims_summs_luu, 
+                         aes(x=stim_iter, y=neutral_pref, fill=as.numeric(stim_iter))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  geom_bar(stat="identity", color="black") + 
+  geom_jitter(data=np_si_sims_summs_var_luu, aes(x=stim_iter, y=neutral_pref), pch=21, width=.2) +
+  annotate("rect", xmin=5.5, xmax=10.5, ymin=0, ymax=.22, alpha=0.2, fill="gray57") +
+  annotate("text", x=3, y=.20, label="Phase 1", size=8) +
+  annotate("text", x=7.5, y=.20, label="Phase 2", size=8) +
+  ga + ap + tol + xlab("Simulus iteration") + ylab("") + tp + ylim(-.1, .23) +
+  ggtitle(TeX("Sim.: Non-pun. bonus = 0")) + scale_color_gradient2()  +
+  scale_x_continuous(breaks=seq(1, 10, 1)) + theme(plot.title = element_text(size = 18))
+  #theme(plot.title = element_text(vjust = -2.5))
+
+m35_np_si_luu_plot
+```
+
+
+```{r, fig.heigh=6, fig.width=13}
+np_si <- emp_np_si_plot + m35_np_si_plot  + m35_np_si_luu_plot
+```
+
+
+```{r, fig.height=6, fig.width=12}
+np_si
+```
+```{r}
+#ggsave("../paper/figs/pieces/fig5_neut-pref_emp-and-sims.png", np_si, height = 6, width=12, dpi=300)
+```
+
+
+
+
+```{r}
+# Didn't converge, so do Bayesian version  
+# summary(pneut_phase1_le <- glmer(neutral ~ scale(stim_iter) + (0 + scale(stim_iter) |ID), 
+#                 data=learn_error_df %>% filter(phase==1), family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+# Now runnning in brms_s script  
+# pneut_time <- brm(
+#     neutral ~ scale(stim_iter) + (1 |ID),
+#     data = learn_error_df %>% filter(phase==1), 
+#     family = bernoulli(link = "logit"), 
+#     warmup=2e3, 
+#     iter=4e3, 
+#     chains=5, 
+#     cores=5,
+#     control= list(adapt_delta = 0.9))
+```
+
+Note: brms files not shared in `public-data` due to file size but can be reproduced using `brms-s.R`  
+
+```{r}
+np_p1_brms <- 
+  read.csv("../model_res/brms_res/neutral_pref_time_effect_phase1__66703__.csv")
+np_p2_brms <- 
+  read.csv("../model_res/brms_res/neutral_pref_time_effect_phase2__28768__.csv")
+
+```
+
+```{r}
+hist(np_p1_brms$b_scalestim_iter, breaks=100)
+hist(np_p2_brms$b_scalestim_iter, breaks=100)
+```
+
+
+## Testing effects  
+
+```{r}
+test_error_df <- test_df %>% filter(correct==0)
+
+# np_test_summs <- test_error_df %>% group_by(ID, phase) %>% 
+#   summarize(mw=mean(worst), mn=mean(neutral), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+np_test_summs_m <- test_error_df %>% group_by(phase) %>% 
+  summarize(mw=mean(worst), mn=mean(neutral), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+
+# np_test_si <- Rmisc::summarySEwithin(np_test_summs,
+#                         measurevar = "neutral_pref",
+#                         withinvars = c("phase"),
+#                         idvar = "ID")
+# 
+# # Within-subject adjusted mean and raw don't agree presumably because of amount of 
+# # variation given sparsity of errors/subject so will just use the raw means for plotting
+# # so can do accurate compare to model preds  
+# np_test_si_sew <- Rmisc::summarySEwithin(np_test_summs,
+#                         measurevar = "neutral_pref",
+#                         withinvars = c("phase"),
+#                         idvar = "ID")
+# 
+# round(np_test_summs_m$neutral_pref, 4)
+# round(np_test_si_sew$neutral_pref, 4)
+
+
+```
+
+In contrast to during learning, participants do not appear to retain much ability to avoid the wost stimuli during test  
+
+```{r}
+np_test_summs_m
+emp_np_si_test_plot <- 
+  ggplot(np_test_summs_m, aes(x=as.factor(phase), y=neutral_pref, fill=as.factor(phase))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  geom_bar(stat="identity", color="black") + 
+  #geom_errorbar(aes(ymin=neutral_pref-se, ymax=neutral_pref+se), width=.2) + 
+  
+  ga + ap + tol + xlab("Phase") + ylab("") + tp + 
+  ggtitle(#"Neutral preference during test 
+    "Empirical") + scale_fill_manual(values=c("gray81", "gray40")) + ylim(-.05, .23)
+emp_np_si_test_plot
+```
+
+```{r}
+# ggsave("../paper/figs/pieces/fig6_emp_np_si.png", emp_np_si_test_plot, height = 4, width=5, dpi=300)
+```
+
+And statistically there is no significant ability to pick neutral over worst, or better ability to do so by the second versus first phase.  
+
+(These are not singular issue so didn't need to fit Bayesian model)  
+
+```{r}
+summary(pneut_test <- glmer(neutral ~ 1 + (1|ID), 
+                data=test_error_df, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(pneut_test_phase <- glmer(neutral ~ phase + (phase|ID), 
+                data=test_error_df, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+Bayesian version for more direct comparison to learning where only Bayesian model converged  
+
+```{r}
+np_test_brms <- read.csv("../model_res/brms_res/neutral_pref_test_effect__33330__.csv")
+```
+
+
+```{r}
+hist(np_test_brms$b_Intercept, breaks=100)
+```
+
+
+
+However store the frequentist REs for correlating with test diffs  
+```{r}
+test_res <- data.frame(ranef(pneut_test)$ID)
+```
+
+
+The lack of retained ability to avoid punishment over neutral is unsurprising because the RL learning rate from negative PEs fit much lower than that from positive PEs   
+
+
+```{r}
+cat("\nAlpha for pos. PEs quantiles: \n")
+round(quantile(m35$alpha_pos), 6)
+cat("\nAlpha for neg. PEs quantiles: \n")
+round(quantile(m35$alpha_neg), 6)
+```
+Take log given strong negative skew  
+```{r}
+hist(m35$alpha_neg, breaks=100)
+hist(log(m35$alpha_neg), breaks=100)
+hist(m35$alpha_pos, breaks=100)
+hist(log(m35$alpha_pos), breaks=100)
+
+t.test(log(m35$alpha_neg), log(m35$alpha_pos), paired = TRUE)
+```
+
+
+
+```{r}
+m35_test_sim_error_df <- m35_s_test %>% filter(corrects==0)
+
+np_test_summs_m35_sim <- m35_test_sim_error_df %>% group_by(phase) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+np_test_summs_m35_sim_var <- m35_test_sim_error_df %>% group_by(phase, iter) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+```
+
+And the model correctly predicts poor retained ability to avoid punishment over neutral overall  
+
+```{r}
+sim_m35_np_si_test_plot <- 
+  ggplot(np_test_summs_m35_sim , aes(x=as.factor(phase), y=neutral_pref, fill=as.factor(phase))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  geom_jitter(data=np_test_summs_m35_sim_var, height=0, width=.2, size=3, alpha=.8) + 
+  geom_bar(stat="identity", color="black", alpha=.8) + 
+  ga + ap + tol + xlab("Phase") + ylab("") + tp + 
+  ggtitle(#"Neutral preference during Test 
+          "Simulated") + scale_fill_manual(values=c("gray81", "gray40")) + ylim(-.05, .23)
+sim_m35_np_si_test_plot
+```
+
+
+Whereas a model that sets $\alpha_{neg} = \alpha_{pos}$ incorrectly predicts a retained neutral preference at a similar level to what is observed empirically at the highest points during learning  
+
+
+```{r}
+m35_s_lesionalphaneg <- 
+  read.csv("../model_res/sims/SIM_RunRLWMPRewLesionAlphaNeg27102.csv")
+```
+
+```{r}
+m35_test_sim_error_df_lan <- m35_s_lesionalphaneg %>% filter(corrects==0)
+
+np_test_summs_m35_sim_lan <- m35_test_sim_error_df_lan %>% group_by(phase) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+np_test_summs_m35_sim_var_lan <- m35_test_sim_error_df_lan %>% group_by(phase, iter) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+sim_m35_np_si_test_plot_lan <- 
+  ggplot(np_test_summs_m35_sim_lan , aes(x=as.factor(phase), y=neutral_pref, fill=as.factor(phase))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  geom_jitter(data=np_test_summs_m35_sim_var_lan, height=0, width=.2, size=3, alpha=.8) + 
+  geom_bar(stat="identity", color="black", alpha=.8) + 
+  ga + ap + tol + xlab("Phase") + ylab("") + tp + 
+  ggtitle(TeX("Simulated: $\\alpha^{-} = \\alpha^{+}$"))  +
+  scale_fill_manual(values=c("gray81", "gray40")) + ylim(-.05, .23)
+  #ggtitle("Neutral preference during Test \nSimulated equating TeX('$\\alpha^{-}')") + 
+sim_m35_np_si_test_plot_lan
+```
+
+```{r}
+test_np_plots <- 
+  emp_np_si_test_plot + sim_m35_np_si_test_plot #+ sim_m35_np_si_test_plot_lan
+```
+
+```{r, fig.height=6, fig.width=12}
+test_np_plots
+```
+
+```{r}
+ggsave("../paper/figs/pieces/fig6_TEST_neut-pref_emp-and-sims.png", test_np_plots, height = 6, width=12, dpi=300)
+```
+
+
+Code if alpha pos is greater  
+```{r}
+m35$alpha_pos_greater <- if_else(m35$alpha_pos > m35$alpha_neg, 1, 0)
+```
+
+```{r}
+table(m35$alpha_pos_greater)
+table(m35$alpha_pos_greater)[2]/sum(table(m35$alpha_pos_greater))
+```
+
+```{r}
+alpha_comp <- ggplot(m35, 
+                     aes(x=alpha_neg, alpha_pos, fill=as.factor(alpha_pos_greater))) + 
+    geom_point(size=4, pch=21) + 
+    ga + ap + tp + 
+    stp + tol + ylim(0, .05) + xlim(0, .05) +
+    geom_line(aes(y=alpha_neg)) +
+    xlab(TeX("$\\alpha^{-} ")) + 
+   ylab(TeX("$\\alpha^{+} ")) + scale_fill_manual(values=c("purple", "orange")) + 
+    theme(axis.title = element_text(size=50))
+    # ggtitle(model_char, subtitle=str) +
+    # ylab(ychar) + xlab(xchar) 
+  
+alpha_comp
+```
+```{r, fig.width=12}
+alpha_and_sim <- alpha_comp + sim_m35_np_si_test_plot_lan
+```
+
+```{r}
+# ggsave("../paper/figs/pieces/fig5_alpha_and_sim.png", alpha_and_sim,  height = 6, width=12, dpi=300)
+```
+
+
+
+However, there are some individual differences — with those fitting a higher learning from negative PEs showing better ability to retain a neutral preference (and note this correlation is expected to be attenuated due to measurement error due to the relatively poor parameter recovery for the learning rate for negative PEs shown earlier)  
+
+```{r}
+hist(m35$alpha_neg)
+```
+
+```{r}
+ComparePars(m35$alpha_neg, test_res$X.Intercept.,
+            model_char="", xchar = "Learning rate from negative RPEs", 
+            ychar = "Avoidance of punishment \n over neutral at test",
+            use_identity_line = 0)
+
+ComparePars(log(m35$alpha_neg), test_res$X.Intercept.,
+            model_char="", xchar = "Log (learning rate from negative RPEs)", 
+            ychar = "Avoidance of punishment \n over neutral at test",
+            use_identity_line = 0)
+```
+
+
+
+
+# Individual differences - depression/anxiety and rumination  
+
+```{r}
+# qdf %>% filter(catch_q_1 != 1) %>% select(ID)
+# qdf %>% filter(catch_q_2 != 1) %>% select(ID)
+qdf <- read.csv("../data/questionnaire_df.csv")
+demogs <- read.csv("../data/demogs_deident.csv")
+if (all(demogs$ID==qdf$ID)) qdf$group <- demogs$group
+qdf <- qdf %>% filter(!ID==255)
+demogs <- demogs %>% filter(!ID==255)
+learn_df <- learn_df %>% filter(!ID==255)
+test_df <- test_df %>% filter(!ID==255)
+```
+
+
+Tiny amount of missing cases so fine to mean impute  
+```{r}
+length(which(is.na(qdf %>% select(contains("BDI"))))) # 3 missing BDI 
+length(which(is.na(qdf %>% select(contains("GAD"))))) # 4 GAD 
+length(which(is.na(qdf %>% select(contains("RRS"))))) # 3 RRS
+```
+
+
+```{r}
+qdf_before_imp <- qdf
+```
+
+```{r}
+for (i in 1:nrow(qdf)) {
+  if (any(is.na(qdf[i, grep("BDI", names(qdf))]))) {
+    this_row <- qdf[i, grep("BDI", names(qdf))]
+    na_idx <- which(is.na(qdf[i, grep("BDI", names(qdf))]))
+    this_row[na_idx] <- mean(as.numeric(this_row), na.rm=TRUE)
+    qdf[i, grep("BDI", names(qdf))] <- this_row
+  }
+}
+
+for (i in 1:nrow(qdf)) {
+  if (any(is.na(qdf[i, grep("GAD", names(qdf))]))) {
+    this_row <- qdf[i, grep("GAD", names(qdf))]
+    na_idx <- which(is.na(qdf[i, grep("GAD", names(qdf))]))
+    this_row[na_idx] <- mean(as.numeric(this_row), na.rm=TRUE)
+    qdf[i, grep("GAD", names(qdf))] <- this_row
+  }
+}
+
+for (i in 1:nrow(qdf)) {
+  if (any(is.na(qdf[i, grep("RRS", names(qdf))]))) {
+    this_row <- qdf[i, grep("RRS", names(qdf))]
+    na_idx <- which(is.na(qdf[i, grep("RRS", names(qdf))]))
+    this_row[na_idx] <- mean(as.numeric(this_row), na.rm=TRUE)
+    qdf[i, grep("RRS", names(qdf))] <- this_row
+  }
+}
+```
+
+Given tiny amount of missing cases so shouldn't skew values much, doing NA rm for pres
+```{r}
+length(which(is.na(qdf %>% select(contains("BDI"))))) # 3 missing BDI 
+length(which(is.na(qdf %>% select(contains("GAD"))))) # 4 GAD 
+length(which(is.na(qdf %>% select(contains("RRS"))))) # 3 RRS
+```
+Sanity check unchanged  
+```{r}
+# ComparePars(rowSums(qdf[, grep("RRS", names(qdf))]), 
+#             rowSums(qdf_before_imp[, grep("RRS", names(qdf_before_imp))]))
+# ComparePars(rowSums(qdf[, grep("BDI", names(qdf))]), 
+#             rowSums(qdf_before_imp[, grep("BDI", names(qdf_before_imp))]))
+# ComparePars(rowSums(qdf[, grep("GAD", names(qdf))]), 
+#             rowSums(qdf_before_imp[, grep("GAD", names(qdf_before_imp))]))
+```
+
+Reliability stats  
+
+```{r}
+psych::alpha(qdf[, grep("BDI", names(qdf))])
+psych::alpha(qdf[, grep("GAD", names(qdf))])
+psych::alpha(qdf[, grep("RRS", names(qdf))])
+```
+
+
+Sum scores  
+```{r}
+qdf$BDI_sum <- rowSums(qdf[, grep("BDI", names(qdf))])
+qdf$GAD_sum <- rowSums(qdf[, grep("GAD", names(qdf))])
+qdf$RRS_sum <- rowSums(qdf[, grep("RRS", names(qdf))])
+qdf$depr_anx_sum <- qdf$BDI_sum + qdf$GAD_sum
+```
+
+```{r}
+#any(is.na(qdf))
+#write.csv(qdf, "../data/questionnaire_df_with_impute.csv")
+```
+
+Put depr/anxisety sum and GAD sum into learn df  
+
+
+```{r}
+unique_ids <- unique(learn_df$ID)
+for (i in 1:length(unique_ids)) {
+  
+  learn_df[learn_df$ID==unique_ids[i], "depr_anx_sum"] <- 
+    qdf[qdf$ID==unique_ids[i], "depr_anx_sum"]
+  learn_df[learn_df$ID==unique_ids[i], "bdi_sum"] <- qdf[qdf$ID==unique_ids[i], "BDI_sum"]
+  learn_df[learn_df$ID==unique_ids[i], "gad_sum"] <- qdf[qdf$ID==unique_ids[i], "GAD_sum"]
+  learn_df[learn_df$ID==unique_ids[i], "rrs_sum"] <- qdf[qdf$ID==unique_ids[i], "RRS_sum"]
+  
+  test_df[test_df$ID==unique_ids[i], "depr_anx_sum"] <- 
+    qdf[qdf$ID==unique_ids[i], "depr_anx_sum"]
+  test_df[test_df$ID==unique_ids[i], "bdi_sum"] <- qdf[qdf$ID==unique_ids[i], "BDI_sum"]
+  test_df[test_df$ID==unique_ids[i], "gad_sum"] <- qdf[qdf$ID==unique_ids[i], "GAD_sum"]
+  test_df[test_df$ID==unique_ids[i], "rrs_sum"] <- qdf[qdf$ID==unique_ids[i], "RRS_sum"]
+}
+```
+
+```{r}
+# Check 
+# hist(learn_df$depr_anx_sum)
+# hist(test_df$depr_anx_sum)
+# 
+# hist(learn_df$rrs_sum)
+# hist(test_df$rrs_sum)
+```
+
+
+
+```{r}
+# Export — df imported into for brms_s 
+# write.csv(learn_df, "../data/learn_df_with_qairre_data.csv")
+# write.csv(test_df, "../data/test_df_with_qairre_data.csv")
+```
+
+Plot for supp fig  
+
+```{r}
+bdi_means <- qdf %>% group_by(group) %>% summarize(m=mean(BDI_sum))
+bdi_p <- ggplot(qdf, aes(x=BDI_sum, fill=group, color=group)) + 
+  geom_vline(data=bdi_means, aes(xintercept = m, color=group), size=3) +
+  geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  ggtitle("Depression (BDI-II)") + tp + 
+  tol
+```
+
+Just for legend  
+```{r}
+# ggplot(qdf, aes(x=BDI_sum, fill=group, color=group)) +
+#   geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") +
+#   xlab("") +
+#   theme(axis.text.y = element_blank()) +
+#   theme(axis.ticks.y = element_blank()) +
+#   scale_fill_manual(values=c("red", "blue", "gray")) +
+#   scale_color_manual(values=c("red", "blue", "gray")) +
+#   ggtitle("Depression (BDI-II)") + tp
+```
+
+```{r}
+gad_means <- qdf %>% group_by(group) %>% summarize(m=mean(GAD_sum))
+
+gad_p <- ggplot(qdf, aes(x=GAD_sum, fill=group, color=group)) + 
+  geom_vline(data=gad_means, aes(xintercept = m, color=group), size=3) +
+  geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  ggtitle("Generalized anxiety (GAD-7)") + tp + 
+  tol
+```
+
+```{r}
+rrs_means <- qdf %>% group_by(group) %>% summarize(m=mean(RRS_sum))
+
+rrs_p <- ggplot(qdf, aes(x=RRS_sum, fill=group, color=group)) + 
+  geom_vline(data=rrs_means, aes(xintercept = m, color=group), size=3) +
+  geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  ggtitle("Rumination (RRS-SF)") + tp + 
+  tol
+```
+
+```{r}
+sum(table(qdf$group))
+sym_plot <- bdi_p/ gad_p / rrs_p
+```
+
+```{r, fig.width=9, fig.height=7}
+sym_plot
+```
+
+
+
+```{r}
+#ggsave("../paper/figs/supp-figs/symptom_plot.png", sym_plot, width=8.5, height = 8.5, dpi=200)
+```
+
+
+## Behavioral performance and individual differences   
+
+```{r}
+cor.test(learn_m$m, qdf$depr_anx_sum)
+cor.test(test_m$m, qdf$depr_anx_sum)
+cor.test(learn_m$m, qdf$RRS_sum)
+cor.test(test_m$m, qdf$RRS_sum)
+```
+
+
+```{r}
+ctest <- cor.test(qdf$GAD_sum, qdf$BDI_sum)
+r <- round(ctest$estimate, 2)
+p <- round(ctest$p.value, 2)
+str <- paste("r =", r, "p =", p)
+  
+  
+ggplot(qdf, aes(x=GAD_sum, BDI_sum)) + 
+    geom_smooth(method='lm', formula= y~x, color="black", size=3) +
+    geom_point(size=6, fill="white", pch=21) + 
+    ga + ap + tp + 
+    ggtitle("", subtitle=str) +
+    ylab("BDI-II") + xlab("GAD-7") + 
+    theme(plot.subtitle = element_text(size = 25, face = "bold"))
+```
+
+
+
+Create high low DA, BDI  and GAD  
+```{r}
+median(qdf$BDI_sum)
+median(qdf$GAD_sum)
+```
+
+```{r}
+hist(qdf$depr_anx_sum, breaks=100)
+median(qdf$depr_anx_sum)
+table(if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0))
+      
+#table(if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0)) # Check that's about half
+qdf$DA_hilo <- if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0)
+qdf %>% group_by(DA_hilo) %>% summarize(m=median(depr_anx_sum)) # Confirm
+```
+
+```{r}
+#table(if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0))
+qdf$dep_hilo <- if_else(qdf$BDI_sum > median(qdf$BDI_sum), 1, 0)
+#qdf %>% group_by(dep_hilo) %>% summarize(m=median(depr_anx_sum)) 
+```
+
+```{r}
+#table(if_else(qdf$GAD_sum > median(qdf$GAD_sum), 1, 0))
+qdf$anx_hilo <- if_else(qdf$GAD_sum > median(qdf$GAD_sum), 1, 0)
+#qdf %>% group_by(anx_hilo) %>% summarize(m=median(GAD_sum)) 
+```
+
+```{r}
+table(if_else(qdf$RRS_sum > median(qdf$RRS_sum), 1, 0))
+qdf$rrs_hilo <- if_else(qdf$RRS_sum > median(qdf$RRS_sum), 1, 0) 
+qdf %>% group_by(rrs_hilo) %>% summarize(m=median(RRS_sum)) 
+```
+
+
+
+
+Put into learning and test dfs  
+
+```{r}
+high_depr_anx_pts <- qdf[qdf$DA_hilo == 1, "ID"]
+low_depr_anx_pts <- qdf[qdf$DA_hilo == 0, "ID"]
+
+learn_df[learn_df$ID %in% high_depr_anx_pts, "DA_hilo"] <- "high depr-anx"
+learn_df[learn_df$ID %in% low_depr_anx_pts, "DA_hilo"] <- "low depr-anx"
+
+test_df[test_df$ID %in% high_depr_anx_pts, "DA_hilo"] <- "high depr-anx"
+test_df[test_df$ID %in% low_depr_anx_pts, "DA_hilo"] <- "low depr-anx"
+```
+
+```{r}
+high_rum_pts <- qdf[qdf$rrs_hilo == 1, "ID"]
+low_rum_pts <- qdf[qdf$rrs_hilo == 0, "ID"]
+
+learn_df[learn_df$ID %in% high_rum_pts, "rrs_hilo"] <- "high rum"
+learn_df[learn_df$ID %in% low_rum_pts, "rrs_hilo"] <- "low rum"
+
+test_df[test_df$ID %in% high_rum_pts, "rrs_hilo"] <- "high rum"
+test_df[test_df$ID %in% low_rum_pts, "rrs_hilo"] <- "low rum"
+```
+
+
+
+Plot proportion correct by median split  
+
+```{r}
+pcor_ss_DA <- data.frame(learn_df %>% group_by(stim_iter, set_size, 
+                                            ID, DA_hilo) %>% summarize(m=mean(correct)))
+
+pcor_ss_err_DA <- Rmisc::summarySEwithin(pcor_ss_DA,
+                        measurevar = "m",
+                        withinvars = c("set_size", "stim_iter", "DA_hilo"),
+                        idvar = "ID")
+
+pcor_ss_err_DA$DA_hilo <- factor(pcor_ss_err_DA$DA_hilo, levels=c("low depr-anx", "high depr-anx"))
+```
+
+
+```{r}
+pcor_by_grp <- ggplot(pcor_ss_err_DA, aes(x=stim_iter, y=m, group=as.factor(DA_hilo), 
+                                  color=as.factor(DA_hilo))) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin=m-se, ymax=m+se), fill='gray57', alpha=.45) + 
+          geom_hline(yintercept=.33, size=1.5, color="gray57") + # chance line 
+          geom_hline(yintercept=c(.5, .6, .7, .8, .9, 1), linetype="dotted") +
+  geom_point(aes(fill=as.factor(DA_hilo)), color="black", size=5, pch=21) + 
+          geom_vline(xintercept=c(2, 5, 8, 10), linetype="dotted") +
+          #geom_point(aes(fill=as.factor(set_size)), color="black", size=5, pch=21) + 
+  annotate("rect", xmin=6, xmax=10.5, ymin=.3, ymax=1.1, alpha=0.2, fill="gray57") +
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("Proportion correct") + 
+  ggtitle("") + tp + facet_wrap(~ set_size) + ft + lp + 
+  scale_fill_manual(values=c("orange1", "brown")) + 
+  scale_color_manual(values=c("orange1", "brown")) + tol
+```
+
+```{r, fig.width=14, height=12}
+pcor_by_grp 
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/pcor_by_grp.png", pcor_by_grp, width=14, height=10, dpi=300)
+```
+
+```{r}
+pcor_ss_rrs <- data.frame(learn_df %>% group_by(stim_iter, set_size, 
+                                            ID, rrs_hilo) %>% summarize(m=mean(correct)))
+
+pcor_ss_err_rrs <- Rmisc::summarySEwithin(pcor_ss_rrs,
+                        measurevar = "m",
+                        withinvars = c("set_size", "stim_iter", "rrs_hilo"),
+                        idvar = "ID")
+
+pcor_ss_err_rrs$rrs_hilo <- factor(pcor_ss_err_rrs$rrs_hilo, levels=c("low rum", "high rum"))
+```
+
+```{r}
+pcor_by_grp_rum <- ggplot(pcor_ss_err_rrs, aes(x=stim_iter, y=m, group=as.factor(rrs_hilo), 
+                                  color=as.factor(rrs_hilo))) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin=m-se, ymax=m+se), fill='gray57', alpha=.45) + 
+          geom_hline(yintercept=.33, size=1.5, color="gray57") + # chance line 
+          geom_hline(yintercept=c(.5, .6, .7, .8, .9, 1), linetype="dotted") +
+  geom_point(aes(fill=as.factor(rrs_hilo)), color="black", size=5, pch=21) + 
+          geom_vline(xintercept=c(2, 5, 8, 10), linetype="dotted") +
+          #geom_point(aes(fill=as.factor(set_size)), color="black", size=5, pch=21) + 
+  annotate("rect", xmin=6, xmax=10.5, ymin=.3, ymax=1.1, alpha=0.2, fill="gray57") +
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("Proportion correct") + 
+  ggtitle("") + tp + facet_wrap(~ set_size) + ft + lp + 
+  scale_fill_manual(values=c("red", "darkred")) + 
+  scale_color_manual(values=c("red", "darkred"))
+```
+
+Rumination version  
+```{r, fig.width=14, height=12}
+pcor_by_grp_rum
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/pcor_by_grp_rum.png", pcor_by_grp_rum, width=14, height=8, dpi=300)
+```
+
+
+```{r}
+test_error_df <- test_df %>% filter(correct==0)
+
+np_test_summs_da <- test_error_df %>% group_by(ID, DA_hilo, phase) %>% 
+  summarize(mw=mean(worst), mn=mean(neutral), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+np_test_si_da <- Rmisc::summarySEwithin(np_test_summs_da,
+                        measurevar = "neutral_pref",
+                        withinvars = c("DA_hilo", "phase"),
+                        idvar = "ID")
+
+np_test_si_da$DA_hilo <- factor(np_test_si_da$DA_hilo, levels=c("low depr-anx", "high depr-anx"))
+
+```
+
+
+```{r, fig.width=8}
+ggplot(np_test_si_da, aes(x=phase, y=neutral_pref, fill=phase)) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  geom_bar(stat="identity", color="black") + 
+  geom_errorbar(aes(ymin=neutral_pref-se, ymax=neutral_pref+se), width=.2) + 
+  
+  ga + ap + tol + xlab("Phase") + ylab("") + tp + 
+  ggtitle(#"Neutral preference during test 
+    "Empirical") + scale_fill_manual(values=c("gray81", "gray40")) + ylim(-.05, .23) + facet_wrap(~ DA_hilo)  + ft
+```
+
+
+## Read in BRMS posteriors fit with `brms_s.R` for behavior  
+
+Performace in terms of proprortion correct  
+
+```{r}
+phase1_learn_perf <- read.csv("../model_res/brms_res/reduced_perf_model_phase1__86050__.csv")
+
+phase2_learn_perf <- read.csv("../model_res/brms_res/reduced_correct_perf_model_phase2__76459__.csv")
+
+test_perf <- read.csv("../model_res/brms_res/reduced_correct_test_model__24237__.csv")
+```
+
+```{r}
+ReturnPosteriorMeanAnd90CI <- function(posterior) {
+  cat("\nposterior mean =", mean(posterior))
+  cat("\n90% CI ="); print (bayestestR::ci(posterior, ci = .9, method = "HDI"))
+}
+```
+
+
+Neutral preference  
+
+```{r}
+np_da <- read.csv("../model_res/brms_res/neutral_pref_learn_model__64424__.csv")
+# Version that converged that has intercept set to 0 but models REs in depr/anx  
+np_test_da <- read.csv("../model_res/brms_res/neutral_pref_test_model_0int__14655__.csv")
+```
+
+Rumination
+
+```{r}
+phase1_rum <- read.csv("../model_res/brms_res/RUM_reduced_perf_model_phase1__63279__.csv")
+phase2_rum <- read.csv("../model_res/brms_res/RUM_reduced_correct_perf_model_phase2__25543__.csv")
+test_rum <- read.csv("../model_res/brms_res/RUM_reduced_correct_test_model__53350__.csv")
+```
+```{r}
+np_rum <- read.csv("../model_res/brms_res/RUM_neutral_pref_learn_model__89767__.csv")
+np_test_rum <- read.csv("../model_res/brms_res/RUM_neutral_pref_test_model__71650__.csv")
+```
+
+
+
+### Proportion correct ~ symptoms  
+
+Phase 1   
+
+
+```{r}
+cat("\n Depression prop correct phase 1: \n")
+# DA  
+ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_sum)
+ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaleset_size) # Sanity check this is negative and tight  
+ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_sum.scaleset_size)
+
+cat("\n\n Rumination prop correct phase 1: \n")
+# Rum 
+ReturnPosteriorMeanAnd90CI(phase1_rum$b_scalerrs_sum)
+ReturnPosteriorMeanAnd90CI(phase1_rum$b_scaleset_size) # Sanity check - v consistent with above  
+ReturnPosteriorMeanAnd90CI(phase1_rum$b_scalerrs_sum.scaleset_size)
+```
+
+Phase 2  
+
+```{r}
+# DA  
+cat("\n\n Depression prop correct phase 2: \n")
+ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_sum)
+ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaleset_size) # Sanity check this is negative and tight  
+ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_sum.scaleset_size)
+
+# Rum 
+cat("\n\n Rumination prop correct phase 2: \n")
+ReturnPosteriorMeanAnd90CI(phase2_rum$b_scalerrs_sum)
+ReturnPosteriorMeanAnd90CI(phase2_rum$b_scaleset_size) # Sanity check - v consistent with above  
+ReturnPosteriorMeanAnd90CI(phase2_rum$b_scalerrs_sum.scaleset_size)
+```
+
+Test   
+
+```{r}
+# DA  
+cat("\n\n Depression prop correct test: \n")
+ReturnPosteriorMeanAnd90CI(test_perf$b_scaledepr_anx_sum)
+
+# Rum 
+cat("\n\n Rumination prop correct test: \n")
+ReturnPosteriorMeanAnd90CI(test_rum$b_scalerrs_sum)
+```
+
+### Neutral preference ~ symptoms  
+
+
+#### Learning  
+
+The intercept posteriors show that the evidence for a neutral preference found in the frequentist models holds in these Bayesian regression models, now while also controlling for psychiatric symptoms   
+
+```{r}
+cat("\n Depression : \n")
+cat("\n Evidence controlling for depression : "); ReturnPosteriorMeanAnd90CI(np_da$b_Intercept)
+cat("\n Evidence for depession effect : ");ReturnPosteriorMeanAnd90CI(np_da$b_scaledepr_anx_sum)
+
+cat("\n Rumination : \n")
+cat("\n Evidence controlling for rumination : "); ReturnPosteriorMeanAnd90CI(np_rum$b_Intercept)
+cat("\n Evidence for rumination effect : ");ReturnPosteriorMeanAnd90CI(np_rum$b_scalerrs_sum)
+```
+
+#### Test  
+
+Note that HDI for intercept (indicating neutral pref at test) includes 0 (although it's close controlling for depression symptoms)  
+
+```{r}
+cat("\n Depression : \n")
+cat("\n Evidence controlling for depression : "); ReturnPosteriorMeanAnd90CI(np_test_da$b_Intercept)
+cat("\n Evidence for depession effect : ");ReturnPosteriorMeanAnd90CI(np_test_da$b_scaledepr_anx_sum)
+
+cat("\n Rumination : \n")
+cat("\n Evidence controlling for rumination : "); ReturnPosteriorMeanAnd90CI(np_test_rum$b_Intercept)
+cat("\n Evidence for rumination effect : ");ReturnPosteriorMeanAnd90CI(np_test_rum$b_scalerrs_sum)
+```
+
+Make sure Rhats below 1.1  
+
+```{r}
+CheckRhat("../model_res/brms_res/Rhatreduced_correct_perf_model_phase2__76459__.csv")
+CheckRhat("../model_res/brms_res/Rhatreduced_perf_model_phase1__86050__.csv")
+CheckRhat("../model_res/brms_res/Rhatreduced_correct_test_model__24237__.csv")
+CheckRhat("../model_res/brms_res/Rhatneutral_pref_learn_model__64424__.csv")
+CheckRhat("../model_res/brms_res/Rhatneutral_pref_test_model__70753__.csv")
+```
+```{r}
+CheckRhat("../model_res/brms_res/RhatRUM_neutral_pref_learn_model__89767__.csv")
+CheckRhat("../model_res/brms_res/RhatRUM_neutral_pref_test_model__71650__.csv")
+CheckRhat("../model_res/brms_res/RhatRUM_reduced_correct_perf_model_phase2__25543__.csv")
+CheckRhat("../model_res/brms_res/RhatRUM_reduced_perf_model_phase1__63279__.csv")
+CheckRhat("../model_res/brms_res/RhatRUM_reduced_correct_test_model__53350__.csv")
+```
+
+
+Get ready to plot proportion correct posterior for depr/anxiety ... 
+
+```{r}
+depr_anx_learn_perf_posteriors <- rbind(
+  data.frame("trace"=phase1_learn_perf$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Learn Phase 1"),
+  data.frame("trace"=phase2_learn_perf$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Learn Phase 2"),
+  data.frame("trace"=phase1_learn_perf$b_scaledepr_anx_sum.scaleset_size, 
+             "label"="da_ss_int", "phase"="Learn Phase 1"),
+  data.frame("trace"=phase2_learn_perf$b_scaledepr_anx_sum.scaleset_size, 
+             "label"="da_ss_int", "phase"="Learn Phase 2")
+)  
+
+depr_anx_test_perf_posterior <- rbind(
+  data.frame("trace"=test_perf$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Test")
+)  
+```
+
+
+```{r, fig.height=4, fig.width=2.5}
+learn_correct_posterior_p <- ggplot(depr_anx_learn_perf_posteriors,
+       aes(x=trace, color=label)) + 
+  geom_vline(xintercept=0, color="gray20", size=1.5) +
+  geom_density(fill="gray57", alpha=.15, size=1.5) +
+  facet_wrap(~ phase, ncol=1) + ga + ap + 
+  scale_color_manual(values=c("tan1", "chocolate")) +  ylab("") + 
+  theme(axis.text.x = element_text(size=15), axis.ticks=element_blank(), axis.text.y=element_blank()) +
+  #labs(title="Learning") +
+  labs(title="") +
+  tol + xlab("") + theme(strip.text.x = element_text(size = 15)) + tp
+learn_correct_posterior_p
+```
+
+
+```{r, fig.height=2, fig.width=2.5}
+test_correct_posterior_p <-ggplot(depr_anx_test_perf_posterior,
+       aes(x=trace, color=label)) + 
+  geom_vline(xintercept=0, color="gray20", size=1.5) +
+  geom_density(fill="gray57", alpha=.15, size=1.5) +
+  facet_wrap(~ phase, ncol=1) +
+  ga + ap + 
+  scale_color_manual(values=c("tan1")) +  
+  ylab("") + 
+  theme(axis.text.x = element_text(size=15), 
+        axis.ticks=element_blank(), axis.text.y=element_blank()) +
+  #labs(title="Test") +
+  tol + xlab("") + theme(strip.text.x = element_text(size = 15)) + tp #+ 
+test_correct_posterior_p 
+```
+
+```{r}
+# ggsave("../paper/figs/pieces/fig7_learn_correct_posterior_p.png", learn_correct_posterior_p, width=2.2, height=3.3, dpi=500)
+# ggsave("../paper/figs/pieces/fig7_test_correct_posterior_p.png", 
+#        test_correct_posterior_p, width=2.2, height=1.65, dpi=500)
+```
+
+... and rum  
+
+```{r}
+rum_learn_perf_posteriors <- rbind(
+  data.frame("trace"=phase1_rum$b_scalerrs_sum, "label"="rum_main_effect", "phase"="Learn Phase 1"),
+  data.frame("trace"=phase2_rum$b_scalerrs_sum, "label"="rum_main_effect", "phase"="Learn Phase 2"),
+  data.frame("trace"=phase1_rum$b_scalerrs_sum.scaleset_size, 
+             "label"="rum_ss_int", "phase"="Learn Phase 1"),
+  data.frame("trace"=phase2_rum$b_scalerrs_sum.scaleset_size, 
+             "label"="rum_ss_int", "phase"="Learn Phase 2")
+)  
+
+rum_test_perf_posterior <- rbind(
+  data.frame("trace"=test_rum$b_scalerrs_sum, "label"="rum_main_effect", "phase"="Test")
+)  
+```
+
+
+
+```{r, fig.height=4, fig.width=2.5}
+learn_correct_posterior_p_RUM <- 
+  ggplot(rum_learn_perf_posteriors,
+       aes(x=trace, color=label)) + 
+  geom_vline(xintercept=0, color="gray20", size=1.5) +
+  geom_density(fill="gray57", alpha=.15, size=1.5) +
+  facet_wrap(~ phase, ncol=1) + ga + ap + 
+  scale_color_manual(values=c("indianred2", "darkred")) +  ylab("") + 
+  theme(axis.text.x = element_text(size=15), axis.ticks=element_blank(), axis.text.y=element_blank()) +
+  #labs(title="Learning") +
+  labs(title="") +
+  tol + xlab("") + theme(strip.text.x = element_text(size = 15)) + tp
+learn_correct_posterior_p_RUM
+```
+
+
+```{r, fig.height=2, fig.width=2.5}
+test_correct_posterior_p_RUM <-
+  ggplot(rum_test_perf_posterior,
+       aes(x=trace, color=label)) + 
+  geom_vline(xintercept=0, color="gray20", size=1.5) +
+  geom_density(fill="gray57", alpha=.15, size=1.5) +
+  facet_wrap(~ phase, ncol=1) +
+  ga + ap + 
+  scale_color_manual(values=c("indianred1")) +  
+  ylab("") + 
+  theme(axis.text.x = element_text(size=15), axis.ticks=element_blank(), axis.text.y=element_blank()) +
+  #labs(title="Test") +
+  tol + xlab("") + theme(strip.text.x = element_text(size = 15)) + tp #+ 
+test_correct_posterior_p_RUM
+```
+
+```{r}
+# ggsave("../paper/figs/pieces/fig7_learn_correct_posterior_p_RUM.png", learn_correct_posterior_p_RUM, width=2.2, height=3.3, dpi=500)
+# ggsave("../paper/figs/pieces/fig7_test_correct_posterior_p_RUM.png",
+#        test_correct_posterior_p_RUM, width=2.2, height=1.65, dpi=500)
+```
+
+
+
+Get ready to plot neutral pref posterior for depr/anxiety  and rum  
+
+```{r}
+depr_anx_np_posteriors <- rbind(
+  data.frame("trace"=np_da$b_scaledepr_anx_sum, "label"="da_effect", "phase"="Learn"),
+  data.frame("trace"=np_test_da$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Test")
+)  
+
+rum_np_posteriors <- rbind(
+  data.frame("trace"=np_rum$b_scalerrs_sum, "label"="rum_effect", "phase"="Learn"),
+  data.frame("trace"=np_test_rum$b_scalerrs_sum, "label"="da_main_effect", "phase"="Test")
+)  
+```
+
+
+
+```{r, fig.height=4, fig.width=2.5}
+np_da_posterior_p <- 
+  ggplot(depr_anx_np_posteriors,
+       aes(x=trace, color=label)) + 
+  geom_vline(xintercept=0, color="gray20", size=1.5) +
+  geom_density(fill="gray57", alpha=.15, size=1.5) +
+  facet_wrap(~ phase, ncol=1) + ga + ap + 
+  scale_color_manual(values=c("tan1", "tan1")) +  ylab("") + 
+  theme(axis.text.x = element_text(size=10), axis.ticks=element_blank(), axis.text.y=element_blank()) +
+  #labs(title="Learning") +
+  labs(title="") +
+  tol + xlab("") + theme(strip.text.x = element_text(size = 15)) + tp 
+  
+np_da_posterior_p 
+```
+
+
+```{r, fig.height=4, fig.width=2.5}
+rum_np_posterior_p <- 
+  ggplot(rum_np_posteriors,
+       aes(x=trace, color=label)) + 
+  geom_vline(xintercept=0, color="gray20", size=1.5) +
+  geom_density(fill="gray57", alpha=.15, size=1.5) +
+  facet_wrap(~ phase, ncol=1) + ga + ap + 
+  scale_color_manual(values=c("indianred2", "indianred2")) +  ylab("") + 
+  theme(axis.text.x = element_text(size=10), axis.ticks=element_blank(), axis.text.y=element_blank()) +
+  #labs(title="Learning") +
+  labs(title="") +
+  tol + xlab("") + theme(strip.text.x = element_text(size = 15)) + tp 
+  
+rum_np_posterior_p
+```
+
+
+```{r}
+# ggsave("../paper/figs/pieces/fig7_np_da_posterior_p.png", np_da_posterior_p , 
+#        width=2.2, height=3.3, dpi=500)
+# ggsave("../paper/figs/pieces/fig7_rum_np_posterior_p.png",
+#        rum_np_posterior_p, width=2.2, height=3.3, dpi=500)
+```
+
+
+## Symptoms ~ model parameters  
+
+```{r}
+learn_m <- learn_df %>%  group_by(ID) %>% summarize(m=mean(correct))
+assert(all(learn_m$ID==qdf$ID))
+test_m <- test_df %>%  group_by(ID) %>% summarize(m=mean(correct))
+assert(all(learn_m$ID==qdf$ID))
+assert(all(m35$ID==qdf$ID))
+assert(all(m35$ID==learn_m$ID))
+assert(all(m35$ID==test_m$ID))
+m35$depr_anx_sum <- qdf$depr_anx_sum
+m35$BDI_sum <- qdf$BDI_sum
+m35$GAD_sum <- qdf$GAD_sum
+m35$RRS_sum <- qdf$RRS_sum
+m35$learn_m <- learn_m$m
+m35$test_m <- test_m$m
+```
+
+Many parameters predict learning and test performance...  
+
+```{r}
+summary(learn_preds_bayes <- rstanarm::stan_glm(
+  scale(learn_m) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+```
+```{r}
+summary(test_preds_bayes <- rstanarm::stan_glm(
+  scale(test_m) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+```
+
+```{r}
+summary(da_preds_bayes <- rstanarm::stan_glm(
+  scale(depr_anx_sum) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+```
+
+```{r}
+summary(rrs_preds_bayes <- rstanarm::stan_glm(
+  scale(RRS_sum) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+```
+
+```{r}
+packageVersion("rstanarm")
+```
+
+Get traces for each par  
+```{r}
+learn_traces <- data.frame(as.matrix(learn_preds_bayes))
+
+learn_est <- ExtractEstimates(learn_traces)
+learn_est$label <- "Learning"
+learn_est$category <- "Proportion correct"
+# Drop the coefs that aren't model pars  
+learn_est <- learn_est %>% filter(!coef %in% c("sigma", "X.Intercept."))
+```
+
+
+
+```{r}
+test_traces <- data.frame(as.matrix(test_preds_bayes))
+
+test_est <- ExtractEstimates(test_traces)
+test_est$label <- "Test"
+test_est$category <- "Proportion correct"
+test_est <- test_est %>% filter(!coef %in% c("sigma", "X.Intercept."))
+assert(all(test_est$coef==learn_est$coef))
+```
+
+
+
+```{r}
+da_traces <- data.frame(as.matrix(da_preds_bayes))
+
+da_est <- ExtractEstimates(da_traces)
+da_est$label <- "Depr/anx"
+da_est$category <- "Symptoms"
+da_est <- da_est %>% filter(!coef %in% c("sigma", "X.Intercept."))
+assert(all(da_est$coef==learn_est$coef))
+```
+
+```{r}
+ReturnPosteriorMeanAnd90CI(da_traces$scale.alpha_neg.)
+ReturnPosteriorMeanAnd90CI(da_traces$scale.alpha_pos.) 
+ReturnPosteriorMeanAnd90CI(da_traces$scale.kappa.)
+ReturnPosteriorMeanAnd90CI(da_traces$scale.phi.)
+ReturnPosteriorMeanAnd90CI(da_traces$scale.rho.)
+ReturnPosteriorMeanAnd90CI(da_traces$scale.rl_off.)
+ReturnPosteriorMeanAnd90CI(da_traces$scale.epsilon.)
+ReturnPosteriorMeanAnd90CI(da_traces$scale.not_pun_bonus.)
+```
+
+The three with close to some support  
+
+```{r}
+cat("\n Depression and bonus for non-punishing items\n")
+ReturnPosteriorMeanAnd90CI(da_traces$scale.not_pun_bonus.)
+
+cat("\n Depression and WM decay\n")
+ReturnPosteriorMeanAnd90CI(da_traces$scale.phi.)
+
+cat("\n Depression and WM capacity\n")
+ReturnPosteriorMeanAnd90CI(da_traces$scale.kappa.)
+```
+```{r}
+cat("\n Depression and learning rate from negative PEs \n")
+ReturnPosteriorMeanAnd90CI(da_traces$scale.alpha_neg.)
+```
+
+Robustness check in univariate models the results aligned w hypotheses 
+```{r}
+summary(npb_da_preds_bayes <- rstanarm::stan_glm(
+  scale(depr_anx_sum) ~
+             
+             scale(not_pun_bonus), 
+             data=m35))
+```
+Of note, results here and elsewhere very slightly discrepant when run within notebook vs. knitted results presumably due to rounding  during knit/posterior sampling randomness but does not change results  
+
+```{r}
+cat("\n Univariate depression/anxiety  bonus for non-punishing items\n")
+npb_traces <- data.frame(as.matrix(npb_da_preds_bayes))
+ReturnPosteriorMeanAnd90CI(npb_traces$scale.not_pun_bonus.)
+```
+
+
+```{r}
+rrs_traces <- data.frame(as.matrix(rrs_preds_bayes))
+
+rrs_est <- ExtractEstimates(rrs_traces)
+rrs_est$label <- "Rumination"
+rrs_est$category <- "Symptoms"
+rrs_est <- rrs_est %>% filter(!coef %in% c("sigma", "X.Intercept."))
+
+assert(all(rrs_est$coef==test_est$coef))
+```
+
+```{r}
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.alpha_neg.)
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.alpha_pos.) 
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.kappa.)
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.phi.)
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.rho.)
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.rl_off.)
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.epsilon.)
+ReturnPosteriorMeanAnd90CI(rrs_traces$scale.not_pun_bonus.)
+```
+
+```{r}
+all_ests <- rbind(learn_est, test_est, da_est, rrs_est)
+all_ests$label <- factor(all_ests$label, levels=c("Learning", "Test", "Depr/anx", "Rumination"))
+```
+
+```{r, fig.width=12}
+all_ests_p <- ggplot(all_ests, #%>% filter(category=="Proportion correct"), 
+       aes(y=coef, x=m, fill=label)) + 
+  geom_vline(xintercept=0, size=1.3, color="gray35") +
+  geom_vline(xintercept=c(-.5, -.25, .25, .5), color="gray65") +
+  geom_errorbar(aes(xmin=lb_10, xmax=ub_90), width=.2, position=position_dodge(width=.4), size=1.5) +
+  geom_point(pch=21, size=5, alpha=.9, position=position_dodge(width=.4)) + ga + ap + lp + 
+  ylab("Regression coefficient \n of model parameter") + 
+  xlab("Mean and 90% credible interval") +
+  scale_y_discrete(labels=rev(c(
+    TeX('$\\RL^{off}'),
+    TeX('$\\rho'),
+    TeX('$\\phi'),
+    TeX('$\\n-p_{b}'),
+    TeX('$\\kappa'),
+    TeX('$\\epsilon'),
+    TeX('$\\alpha_{+}'),
+    TeX('$\\alpha_{-}')))) + 
+   facet_wrap(~category) + ft +
+  scale_fill_manual(values=c("skyblue", "blue", "orange", "red")) +
+  scale_x_continuous(labels=function(x) sprintf("%.1f", x)) + theme(axis.text.y = element_text(size=32)) #+ tol
+all_ests_p
+```
+Spot checks of plot  
+```{r}
+# hist(learn_traces$scale.kappa.)
+# hist(test_traces$scale.kappa.)
+# hist(da_traces$scale.kappa.)
+# hist(learn_traces$scale.rl_off.)
+# hist(test_traces$scale.rl_off.)
+# hist(da_traces$scale.rl_off.)
+# hist(test_traces$scale.alpha_pos.)
+# hist(da_traces$scale.alpha_pos.)
+# hist(learn_traces$scale.epsilon.)
+# hist(test_traces$scale.epsilon.)
+```
+
+
+```{r}
+# ggsave("../paper/figs/pieces/fig8_modelpar_posteriors.png", all_ests_p , 
+#        width=14, height=12, dpi=500)
+```
+
+Robustness check in univariate models the results aligned w hypotheses 
+```{r}
+summary(phi_da_preds_bayes <- rstanarm::stan_glm(
+  scale(depr_anx_sum) ~
+             
+             scale(phi), 
+             data=m35))
+
+summary(kappa_da_preds_bayes <- rstanarm::stan_glm(
+  scale(depr_anx_sum) ~
+             scale(kappa),
+             data=m35))
+
+summary(npb_da_preds_bayes <- rstanarm::stan_glm(
+  scale(depr_anx_sum) ~
+             
+             scale(not_pun_bonus), 
+             data=m35))
+```
+
+
+Sanity check against predictions of frequentist models and check their VIF  
+```{r}
+summary(da_preds <- lm(scale(depr_anx_sum) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+
+summary(rrs_preds <- lm(scale(RRS_sum) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+
+summary(learning_preds <- lm(scale(learn_m) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus),  
+             data=m35))
+
+summary(testing_preds <- lm(scale(test_m) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+```
+
+
+```{r}
+car::vif(learning_preds)
+```
+
+
+```{r}
+car::vif(testing_preds)
+```
+
+
+```{r}
+car::vif(da_preds)
+car::vif(rrs_preds)
+```
+
+
+
+# Comparison to choice kernel rather than RL model 
+
+
+```{r}
+m41_v1 <- read.csv("../model_res/opt/best/BEST__RunHWMPRew34387.csv")
+m41_v2 <- read.csv("../model_res/opt/best/BEST__RunHWMPRew47450.csv")
+m41 <- rbind(m41_v1, m41_v2) %>% group_by(ID) %>% slice(which.min(nll))
+#write.csv(m41, "../model_res/opt/best/BEST__m41_RunHWMPRew.csv")
+```
+```{r}
+hist(m41$learning_bias, breaks=100)
+```
+
+```{r}
+hist(m41$alpha_ck, breaks=100)
+```
+
+```{r}
+hist(m35$alpha_pos, breaks=100)
+```
+
+Highly correlated    
+
+```{r}
+ComparePars(m35$alpha_pos, m41$alpha_ck)
+```
+
+  
+As expected not very correlated   
+```{r}
+ComparePars(m35$alpha_neg, m41$alpha_ck)
+```
+```{r}
+hist(m41$ck_off, breaks=100)
+median(m41$ck_off)
+median(m35$rl_off)
+```
+
+```{r}
+ComparePars(m35$rl_off, m41$ck_off)
+```
+
+Same number of pars so don't need penalty to compare  
+```{r}
+ComparePars(m35$nll, m41$nll, "", "m35", "m41")
+sum(m35$nll-m41$nll)
+length(which(m35$nll < m41$nll))/length(m41$nll)
+```
+
+0 rather than 1/3 inits  
+```{r}
+m42_v1 <- read.csv("../model_res/opt/best/BEST__RunHWMPRew0Inits18746.csv")
+m42_v2 <- read.csv("../model_res/opt/best/BEST__RunHWMPRew0Inits77616.csv")
+m42 <- rbind(m42_v1, m42_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+Very similar but slightly worse than m41 and thus still substantially worse than m35  
+
+```{r}
+ComparePars(m35$nll, m42$nll, "", "m35", "m42")
+sum(m35$nll-m42$nll)
+length(which(m35$nll < m42$nll))/length(m42$nll)
+```
+
+
+```{r}
+m41_s <- read.csv("../model_res/sims/SIM_RunHWMPRew25874.csv")
+```
+
+
+```{r}
+m41_s_learn <- m41_s %>% filter(type=="learning")
+m41_s_test <- m41_s %>% filter(type=="test")
+```
+
+
+```{r}
+pcor_ss_sim_m41 <- data.frame(m41_s_learn %>% group_by(set_size, stim_iter) %>%
+                        summarize(m=mean(corrects), n()))
+
+pcor_ss_sim_m41_iter <- data.frame(m41_s_learn %>% filter(iter %in% c(1:30)) %>%  group_by(stim_iter, set_size, iter) %>%
+                        summarize(m=mean(corrects), n()))
+
+sim_m41_p1 <- 
+  ggplot(pcor_ss_sim_m41, aes(x=as.factor(stim_iter), y=m, group=as.factor(set_size), color=as.factor(set_size))) + 
+  geom_line() + 
+  geom_hline(yintercept=.33, size=1.5, color="gray57") + # chance line 
+  geom_hline(yintercept=c(.5, .6, .7, .8, .9, 1), linetype="dotted") +
+  geom_vline(xintercept=c(2, 5, 8, 10), linetype="dotted") +
+  geom_jitter(data=pcor_ss_sim_m41_iter, aes(fill=as.factor(set_size)), color="black", height=0, width=.2, alpha=1,  size=2, pch=21) + 
+  geom_point(aes(fill=as.factor(set_size)), color="black", size=6, pch=21, alpha=.7) + 
+  annotate("rect", xmin=6, xmax=10.5, ymin=.3, ymax=1.1, alpha=0.2, fill="gray57") +
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("Proportion correct") + 
+  tp + ggtitle("Simulated")
+```
+
+
+```{r}
+#ggsave("../paper/figs/pieces/supp6_sim_perf.png", sim_m41_p1, height = 3.5, width=6, dpi=300)
+```
+
+```{r}
+emp_sim_perf <- emp_p1 + sim_m41_p1 
+```
+
+```{r, fig.height=6, fig.width=11}
+emp_sim_perf
+```
+
+
+```{r}
+np_si_sims_summs <- m41_s %>% 
+  filter(type=="learning" & corrects==0) %>% group_by(stim_iter) %>% #filter(stim_iter %in% c(2:10)) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+np_si_sims_summs_var <- m41_s %>% 
+  filter(type=="learning" & corrects==0) %>%  group_by(stim_iter, iter) %>%  #filter(stim_iter %in% c(2:10)) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+m41_np_si_plot <- ggplot(np_si_sims_summs, 
+                         aes(x=stim_iter, y=neutral_pref, fill=as.numeric(stim_iter))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=np_si_sims_summs_var, aes(x=stim_iter, y=neutral_pref), height=0,
+              width=.2, pch=21) +
+  annotate("rect", xmin=5.5, xmax=10.5, ymin=0, ymax=.22, alpha=0.2, pch=21) +
+  annotate("text", x=3, y=.20, label="", size=8) +
+  annotate("text", x=7.5, y=.20, label="", size=8) +
+  ga + ap + tol + xlab("Simulus iteration") + ylab("") + tp + 
+  ylim(-.05, .23) +
+  ylab("Neutral preference \n during learning") +
+  ggtitle("Simulated") + scale_color_gradient2() +
+  scale_x_continuous(breaks=seq(1, 10, 1)) + ylim(-.1, .23)
+m41_np_si_plot
+```
+```{r}
+#ggsave("../paper/figs/pieces/supp6_neut-pref_emp-and-sims.png", m41_np_si_plot, height = 4, width=11, dpi=300)
+```
+
+Test and SI6 data  
+```{r}
+pcor_p1_test_sim_m41 <- 
+  data.frame(m41_s_test %>% filter(phase==1) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_p1_test_sim_m41_iters <- 
+  data.frame(m41_s_test %>% filter(phase==1) %>% group_by(set_size, iter) %>% summarize(m=mean(corrects)))
+
+pcor_si6_sim_m41 <- 
+  data.frame(m41_s_learn %>% filter(stim_iter==6) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_si6_sim_m41_iters <- 
+  data.frame(m41_s_learn %>% filter(stim_iter==6) %>% group_by(set_size, iter) %>% summarize(m=mean(corrects)))
+
+pcor_p2_test_sim_m41 <- 
+  data.frame(m41_s_test %>% filter(phase==2) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_p2_test_sim_m41_iters <- 
+  data.frame(m41_s_test %>% filter(phase==2) %>% group_by(set_size, iter) %>% summarize(m=mean(corrects)))
+
+sim_p1_test_m41 <- 
+ggplot(pcor_p1_test_sim_m41, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=pcor_p1_test_sim_m41_iters, size=2, alpha=1, width=.08, height=0, pch=21,
+              aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Test phase 1")
+
+sim_si6_m41 <- ggplot(pcor_si6_sim_m41, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=pcor_si6_sim_m41_iters, size=2, alpha=1, width=.08, height=0, pch=21,
+              aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) +
+  ga + ap + xlab("Set size") + ylab("") + tol + ylim(0, 1) + 
+  tp + ggtitle("Stimulus iteration 6")
+
+sim_p2_test_m41 <- ggplot(pcor_p2_test_sim_m41, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  geom_jitter(data=pcor_p2_test_sim_m41_iters, size=2, alpha=1, width=.08, height=0, pch=21,
+              aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) +
+  ga + ap + xlab("Set size") + ylab("") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Test phase 2")
+```
+
+
+```{r, fig.height=4, fig.width=11}
+sims_u_plot <- 
+  sim_p1_test_m41 + sim_si6_m41 + sim_p2_test_m41 + plot_annotation(title="Simulated", theme = theme(plot.title = element_text(size = 25, hjust=.5)))#,
+```
+
+```{r, fig.height=5, fig.width=11}
+emps_u_plot
+```
+
+```{r, fig.height=5, fig.width=11}
+sims_u_plot
+```
+```{r}
+#ggsave("../paper/figs/pieces/supp6_simU.png", sims_u_plot, height = 4, width=11, dpi=300)
+```
+
+```{r}
+hist(m35$rl_off, breaks=50)
+```
+
+
+```{r}
+ck_off_p <- 
+  ggplot(m41, aes(x=ck_off)) + 
+  geom_vline(xintercept=median(m41$ck_off), size=4) +  
+  geom_histogram(fill="white", color="black") + ga + ap + ylab("") + 
+    ggtitle(TeX('$\\CK^{off}')) + tp + xlab("")
+```
+
+
+```{r}
+ck_off_p
+```
+
+```{r}
+median(m41$ck_off)
+median(m35$rl_off)
+```
+
+Note: the learning bias par was implemented as a scalar on WM and RL such that *lower* values correspond to more shrinking of parameter, so plotting 1-bias so it has more intuitive interpretation as higher value = more insensitivity of WM and CK after negative PEs  
+
+```{r}
+lb_off_p <- 
+  ggplot(m41, aes(x=1-learning_bias)) + 
+  geom_vline(xintercept=median(1-m41$learning_bias), size=4) +  
+  geom_histogram(fill="white", color="black") + ga + ap + ylab("") + 
+    ggtitle(TeX('bias')) + tp + xlab("")
+lb_off_p
+```
+
+Test neutral pref   
+```{r}
+m41_test_sim_error_df <- m41_s_test %>% filter(corrects==0)
+
+np_test_summs_m41_sim_var <- m41_test_sim_error_df %>% group_by(phase, iter) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+
+
+np_test_summs_m41_sim <- m41_test_sim_error_df %>% group_by(phase) %>% 
+  summarize(mw=mean(worsts), mn=mean(neutrals), n=n()) %>% mutate(neutral_pref=(mn-mw))
+```
+
+```{r}
+sim_m41_np_si_test_plot <- 
+  ggplot(np_test_summs_m41_sim , aes(x=as.factor(phase), y=neutral_pref, fill=as.factor(phase))) +
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
+  geom_jitter(data=np_test_summs_m41_sim_var, height=0, width=.2, size=3, alpha=.8) + 
+  geom_bar(stat="identity", color="black", alpha=.8) + 
+  ga + ap + tol + xlab("Phase") + ylab("") + tp + 
+  ylab("") +
+  ggtitle("Neutral Preference at Test") + scale_fill_manual(values=c("gray81", "gray40")) + ylim(-.05, .23)
+sim_m41_np_si_test_plot
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/supp6_emp_np_si.png", sim_m41_np_si_test_plot, height = 4, width=5, dpi=300)
+```
+

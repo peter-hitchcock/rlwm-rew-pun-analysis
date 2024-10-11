@@ -1,0 +1,340 @@
+---
+title: "Supplemental Results to Accompany Approach-Avoid RLWM Paper"    
+date: "`r Sys.Date()`"
+author: "Peter Frank Hitchcock - Translational Lab, Emory University"
+output:
+  html_document:
+    toc: true
+---
+
+# Set up packages, function sourcing, and plotting parameters   
+
+```{r, results='hide'}
+sapply(c(
+         "rjson", 
+         "data.table", 
+         "dplyr", 
+         "ggplot2", 
+         "stringr", 
+         "purrr", 
+         "foreach", 
+         "patchwork", 
+         "testit",
+         "lme4", 
+         "lmerTest", 
+         "latex2exp"
+         ), 
+       require, character=TRUE)
+sf <- function() invisible(sapply(paste0("./Functions/", list.files("./Functions/", recursive=TRUE)), source)) # Source all fxs
+sf()
+DefPlotPars()
+```
+
+# Behavioral data  
+
+Read in learn and test df, questionnaires, and demographics  
+```{r}
+learn_df <- read.csv("../data/learn_df.csv")
+test_df <- read.csv("../data/test_df.csv")
+```
+
+Exclude from further analyses the pt who failed both catch qs     
+
+```{r}
+# qdf %>% filter(catch_q_1 != 1) %>% select(ID)
+# qdf %>% filter(catch_q_2 != 1) %>% select(ID)
+qdf <- read.csv("../data/questionnaire_df.csv")
+demogs <- read.csv("../data/demogs_deident.csv")
+if (all(demogs$ID==qdf$ID)) qdf$group <- demogs$group
+qdf <- qdf %>% filter(!ID==255)
+demogs <- demogs %>% filter(!ID==255)
+learn_df <- learn_df %>% filter(!ID==255)
+test_df <- test_df %>% filter(!ID==255)
+```
+
+Create sum scores  
+
+```{r}
+qdf$BDI_sum <- rowSums(qdf %>% select(contains(c("BDI"))), na.rm=TRUE)
+qdf$GAD_sum <- rowSums(qdf %>% select(contains(c("GAD"))), na.rm=TRUE)
+qdf$RRS_sum <- rowSums(qdf %>% select(contains(c("RRS"))), na.rm=TRUE)
+```
+
+```{r}
+qdf$depr_anx_sum <- qdf$BDI_sum + qdf$GAD_sum
+```
+
+
+Get model sims  
+
+```{r}
+m35_s <- 
+  read.csv("../model_res/sims/SIM_RunRLWMPRew53679.csv")
+```
+
+```{r}
+length(unique(m35_s$iter)) 
+```
+
+```{r}
+m35_s_learn <- m35_s %>% filter(type=="learning")
+m35_s_test <- m35_s %>% filter(type=="test")
+```
+
+
+# Parameter recovery  
+
+```{r}
+m35_pr <- read.csv("../model_res/par_recov/pr_res/par_recov_BEST__RunRLWMPRew_85741.csv") # 8/1/24 with minor bug correction  
+```
+
+
+```{r}
+p1 <- ComparePars(m35_pr$kappa_simmed, m35_pr$kappa_recovered, TeX('$\\kappa'))
+p2 <- ComparePars(m35_pr$phi_simmed, m35_pr$phi_recovered, TeX('$\\phi'))
+p3 <- ComparePars(m35_pr$rho_simmed, m35_pr$rho_recovered, TeX('$\\rho'))
+p4 <- ComparePars(m35_pr$alpha_pos_simmed, m35_pr$alpha_pos_recovered, TeX('$\\alpha_{+}')) + 
+  theme(axis.text = element_text(size=11))
+p5 <- ComparePars(m35_pr$alpha_neg_simmed, m35_pr$alpha_neg_recovered, TeX('$\\alpha_{-}')) + 
+  theme(axis.text = element_text(size=11))
+p6 <- ComparePars(m35_pr$rl_off_simmed, m35_pr$rl_off_recovered, TeX('$\\RL^{off}'))+ 
+  theme(axis.text = element_text(size=11))
+p7 <- ComparePars(m35_pr$not_pun_bonus_simmed, m35_pr$not_pun_bonus_recovered, TeX('$\\non-pun_{bonus}')) 
+p8 <- ComparePars(m35_pr$epsilon_simmed, m35_pr$epsilon_recovered, TeX('$\\epsilon'))+ 
+  theme(axis.text = element_text(size=11))
+wm_pars <- p1 + p2 + p3
+rl_pars <- p4 + p5 + p6
+other_pars <- p7 + p8 + p6
+```
+
+
+```{r}
+# ComparePars(m35_pr$not_pun_bonus_simmed, m35_pr$not_pun_bonus_recovered, TeX('$\\non-pun_{bonus}'), "Simulated", "Recovered")
+```
+
+```{r, fig.width=11, fig.height=4.5}
+wm_pars
+```
+```{r, fig.width=11, fig.height=4.5}
+rl_pars
+```
+
+```{r, fig.width=11, fig.height=4.5}
+other_pars # RL off again just for balance in figure - cropped for paper fig 
+```
+
+```{r}
+#ggsave("../paper/figs/pieces/par_recov_part1.png", wm_pars, height = 4.5, width=11, dpi=300)
+#ggsave("../paper/figs/pieces/par_recov_part2.png", rl_pars, height = 4.5, width=11, dpi=300)
+#ggsave("../paper/figs/pieces/par_recov_part3.png", other_pars, height = 4.5, width=11, dpi=300)
+```
+
+
+Check recovery of median split  
+
+
+```{r}
+# Code which of the simulated parameters are above the simmed median  
+m35_pr$simmed_above_median <- (m35_pr$rl_off_simmed > median(m35_pr$rl_off_simmed))*1
+# Code which of the recovered pars above the median 
+m35_pr$recovered_above_median <- (m35_pr$rl_off_recovered > median(m35_pr$rl_off_recovered))*1
+```
+
+How often do are the true pars above the median above the median in the recovered data?  
+
+```{r}
+table(m35_pr$simmed_above_median==m35_pr$recovered_above_median)
+```
+
+```{r}
+table(m35_pr$simmed_above_median==m35_pr$recovered_above_median)[2]/sum(table(m35_pr$simmed_above_median==m35_pr$recovered_above_median))
+```
+
+## Simulations of RL off  
+
+```{r}
+m35 <- read.csv("../model_res/opt/best/BEST__m35_RunRLWMPRew-8-1-24-epsilonfixed.csv") # the final model with the bug/nonsensical implementation of epsilon fixed on 8/1
+```
+
+
+
+```{r}
+# Divide participants into low vs. high RL off groups  
+little_coop <- data.frame(m35 %>% filter(rl_off <= median(m35$rl_off)))$ID
+high_coop <- data.frame(m35 %>% filter(rl_off > median(m35$rl_off)))$ID
+```
+
+## Simulation predictions for high vs. low blunting  
+
+Add SI6 to this and move to supplemental  
+
+```{r}
+# Divide participants into low vs. high RL off groups  
+little_coop <- data.frame(m35 %>% filter(rl_off <= median(m35$rl_off)))$ID
+high_coop <- data.frame(m35 %>% filter(rl_off > median(m35$rl_off)))$ID
+```
+
+
+```{r}
+p1_test_sim_trials_m35_lc <- m35_s_test %>% filter(phase==1 & ID %in% little_coop)
+pcor_p1_test_sim_m35_lc <- 
+  data.frame(p1_test_sim_trials_m35_lc %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_sim_m35_si6_lc <- 
+  data.frame(m35_s_learn %>% filter(stim_iter==6  & ID %in% little_coop) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+p2_test_sim_trials_m35_lc <- m35_s_test %>% filter(phase==2 & ID %in% little_coop)
+pcor_p2_test_sim_m35_lc <- 
+  data.frame(p2_test_sim_trials_m35_lc %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+sim_p1_test_m35_lc <- ggplot(pcor_p1_test_sim_m35_lc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Sim phase 1 test - \n little RPE blunting")
+
+pcor_sim_m35_si6_lc <- ggplot(pcor_sim_m35_si6_lc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Sim stim iter 6 \n low RPE blunting")
+
+sim_p2_test_m35_lc <- ggplot(pcor_p2_test_sim_m35_lc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Sim phase 2 test - \n little RPE blunting")
+```
+
+
+```{r}
+p1_test_sim_trials_m35_hc <- m35_s_test %>% filter(phase==1 & ID %in% high_coop)
+pcor_p1_test_sim_m35_hc <- 
+  data.frame(p1_test_sim_trials_m35_hc %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+p2_test_sim_trials_m35_hc <- m35_s_test %>% filter(phase==2 & ID %in% high_coop)
+pcor_p2_test_sim_m35_hc <- 
+  data.frame(p2_test_sim_trials_m35_hc %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+pcor_sim_m35_si6_hc <- 
+  data.frame(m35_s_learn %>% filter(stim_iter==6  & ID %in% high_coop) %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+
+sim_p1_test_m35_hc <- ggplot(pcor_p1_test_sim_m35_hc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Sim phase 1 test \n high RPE blunting")
+
+pcor_sim_m35_si6_hc <- ggplot(pcor_sim_m35_si6_hc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Sim stim iter 6 \n high RPE blunting")
+
+sim_p2_test_m35_hc <- ggplot(pcor_p2_test_sim_m35_hc, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Sim phase 2 test \n high RPE blunting")
+```
+  
+  
+And indeed, the model predicts that those with little RPE blunting will have the best performance at set size 2... 
+
+```{r, fig.height=5, fig.width=11}
+sim_p1_test_m35_lc + pcor_sim_m35_si6_lc + sim_p2_test_m35_lc
+```
+... whereas those with higher blunting will have the best performance at later set sizes   
+
+```{r, fig.height=5, fig.width=11}
+sim_p1_test_m35_hc + pcor_sim_m35_si6_hc + sim_p2_test_m35_hc
+```
+
+
+## Effect of lesioning RL off  
+
+```{r}
+m35_s_lesion_rloff <- 
+  read.csv("../model_res/sims/SIM_RunRLWMPRewLesionRLOff14495.csv")
+m35_s_lesion_rlofftomax <- 
+  read.csv("../model_res/sims/SIM_RunRLWMPRewRLOffToMax39938.csv")
+```
+
+
+```{r}
+m35_s_lrl_si6 <- m35_s_lesion_rloff %>% filter(type=="learning", stim_iter==6)
+m35_s_lrl_test <- m35_s_lesion_rloff %>% filter(type=="test")
+m35_s_lrlmax_si6 <- m35_s_lesion_rlofftomax %>% filter(type=="learning", stim_iter==6)
+m35_s_lrlmax_test <- m35_s_lesion_rlofftomax %>% filter(type=="test")
+```
+
+```{r}
+pcor_si6_sim_m35_lrl <- 
+  data.frame(m35_s_lrl_si6  %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+p1_test_sim_m35_lrl <- 
+  data.frame(m35_s_lrl_test %>% filter(phase==1) %>%  group_by(set_size) %>% summarize(m=mean(corrects)))
+
+p2_test_sim_m35_lrl <- 
+  data.frame(m35_s_lrl_test %>% filter(phase==2) %>%  group_by(set_size) %>% summarize(m=mean(corrects)))
+
+sim_p1_si6_lrl <- ggplot(pcor_si6_sim_m35_lrl, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Sim stim iter 6 \n Lesion RL off")
+
+sim_p1_test_lrl <- ggplot(p1_test_sim_m35_lrl, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Sim phase 1 test \n Lesion RL off")
+
+sim_p2_test_lrl <- ggplot(p2_test_sim_m35_lrl, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Sim phase 2 test \n Lesion RL off")
+
+```
+
+```{r}
+pcor_si6_sim_m35_lrlmax <- 
+  data.frame(m35_s_lrlmax_si6  %>% group_by(set_size) %>% summarize(m=mean(corrects)))
+
+p1_test_sim_m35_lrlmax <- 
+  data.frame(m35_s_lrlmax_test %>% filter(phase==1) %>%  group_by(set_size) %>% summarize(m=mean(corrects)))
+
+p2_test_sim_m35_lrlmax <- 
+  data.frame(m35_s_lrlmax_test %>% filter(phase==2) %>%  group_by(set_size) %>% summarize(m=mean(corrects)))
+
+sim_p1_si6_lrlmax <- ggplot(pcor_si6_sim_m35_lrlmax, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + 
+  tp + ggtitle("Sim stim iter 6 \n RL off to max ")
+
+sim_p1_test_lrlmax <- ggplot(p1_test_sim_m35_lrlmax, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Sim phase 1 test \n RL off to max")
+
+sim_p2_test_lrlmax <- ggplot(p2_test_sim_m35_lrlmax, aes(x=as.factor(set_size), y=m, fill=as.factor(set_size))) + 
+  geom_hline(yintercept = seq(.1, 1, .1), alpha=.3) +
+  geom_bar(stat="identity", color="black") +
+  ga + ap + xlab("Set size") + ylab("Proportion correct") + tol + ylim(0, 1) + tp +
+  tp + ggtitle("Sim phase 2 test \n RL off to max")
+
+```
+
+```{r, fig.height=5, fig.width=11}
+sim_p1_test_lrl + sim_p1_si6_lrl + sim_p2_test_lrl 
+```
+
+```{r, fig.height=5, fig.width=11}
+sim_p1_test_lrlmax + sim_p1_si6_lrlmax + sim_p2_test_lrlmax
+```
+
+
+For WM-SR model results see other notebook  
