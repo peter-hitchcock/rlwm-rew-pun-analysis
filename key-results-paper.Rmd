@@ -1310,6 +1310,9 @@ np_test_brms <- read.csv("../model_res/brms_res/neutral_pref_test_effect__33330_
 hist(np_test_brms$b_Intercept, breaks=100)
 ```
 
+```{r}
+length(which(np_test_brms$b_Intercept < 0))/length(np_test_brms$b_Intercept)
+```
 
 
 However store the frequentist REs for correlating with test diffs  
