@@ -38,6 +38,10 @@ DefPlotPars()
 packageVersion("brms")
 ```
 
+```{r}
+packageVersion("rstanarm")
+```
+
 **Note: These and other code paths need to be adjusted / dir structure needs to be reconstructed for public data. The public data also excludes demographics and, due to file size, simulations (simulations can be rerun using `s.R`)**      
 
 Read in learn and test df  
@@ -396,8 +400,8 @@ emp_rt <-
 
           geom_point(aes(fill=as.factor(set_size)), color="black", size=5, pch=21) +
   annotate("rect", xmin=6, xmax=10.5, ymin=300, ymax=850, alpha=0.2, fill="gray57") +
-  ga + ap + lp + xlab("Stimulus iteration") + ylab("Reaction time") + tol #+ 
-  #ggtitle("") + tp #+ ylim(300, 900)
+  ga + ap + lp + xlab("Stimulus iteration") + ylab("Reaction time") + tol + 
+  ggtitle("Overall") + tp 
 ```
 
 
@@ -516,6 +520,7 @@ test_ms <- data.frame(test_df %>%
                         group_by(ID, set_size) %>% summarize(test_m=mean(correct)))
 
 assert(all(test_ms$ID==learn_ms$ID))
+assert(all(test_ms$set_size==learn_ms$set_size))
 ```
 
 
@@ -524,16 +529,20 @@ test_ms$learn_m <- learn_ms$learn_m
 ```
 
 
+
+
+
 ```{r, fig.width=11, fig.height=3}
 emp_corrs <- ggplot(test_ms, 
                     aes(x=learn_m, y=test_m, color=as.factor(set_size))) + 
-  geom_jitter(alpha=.4, size=2, width=.02) + 
+  geom_point(alpha=.4, size=2) + 
   ggpubr::stat_cor(method="spearman", size=5, label.y=1.12) + ga + ft + ap + 
   xlab("Learning") + ylab("Test") + facet_wrap(~ set_size, nrow=1) + tol + 
   xlim(0, 1) + ylim(0, 1.17)  + 
-  theme(axis.text = element_blank(), axis.ticks = element_blank()) + 
-  ggtitle("Proportion correct correlation \n Empirical") + tp
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) + theme(axis.title = element_text(size=17)) +
+  ggtitle(expression(italic("Empirical"))) + tp
 ```
+
 
 
 Take one simulation iter to match number used empirically and not "smooth" by more sims  
@@ -547,15 +556,42 @@ assert(all(test_ms_s$ID==learn_ms_s$ID))
 
 test_ms_s$learn_m <- learn_ms_s$learn_m
 
-sim_corrs <- ggplot(test_ms_s, aes(x=learn_m, y=test_m, color=as.factor(set_size))) + geom_jitter(alpha=.4, size=2, width=.0) + 
+sim_corrs <- ggplot(test_ms_s, aes(x=learn_m, y=test_m, color=as.factor(set_size))) + geom_point(alpha=.4, size=2) + 
   ggpubr::stat_cor(method="spearman", size=5, label.y=1.12) + ga + ft + ap + 
   xlab("Learning") + ylab("Test") + facet_wrap(~ set_size, nrow=1) + tol + 
   xlim(0, 1) + ylim(0, 1.17)  +
-  theme(axis.text = element_blank(), axis.ticks = element_blank()) + 
-  ggtitle("Simulated") + tp
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) + theme(axis.title = element_text(size=17)) +
+  ggtitle(expression(italic("Simulated"))) + tp
 ```
 
-A few missing due to jitter and divide by 0  
+To statistically test 
+```{r}
+higher_in_high_ss <- unlist(foreach (i = unique(m35_s_learn$iter)) %do% {
+  learn_ms_s_iter <- NULL; test_ms_s_iter <- NULL; low_ss <- NULL; high_ss <- NULL
+  learn_ms_s_iter <- data.frame(m35_s_learn %>% filter(iter==i) %>%  group_by(ID, set_size) %>% summarize(learn_m=mean(corrects)))
+  test_ms_s_iter <- data.frame(m35_s_test %>% filter(iter==i) %>%  group_by(ID, set_size) %>% summarize(learn_m=mean(corrects)))
+  
+  low_ss <- cor.test(
+    data.frame(learn_ms_s_iter %>% filter(set_size %in% c(1, 2)))$learn_m,
+    data.frame(test_ms_s_iter %>% filter(set_size %in% c(1, 2)))$learn_m
+  )
+  high_ss <- cor.test(
+    data.frame(learn_ms_s_iter %>% filter(set_size %in% c(4, 5)))$learn_m,
+    data.frame(test_ms_s_iter %>% filter(set_size %in% c(4, 5)))$learn_m
+  )
+
+  binary_out <- (low_ss$estimate < high_ss$estimate)*1  
+binary_out
+})
+higher_count <- data.frame("lower"=50-sum(higher_in_high_ss), "higher"=sum(higher_in_high_ss))
+higher_count
+
+binom.test(sum(higher_in_high_ss), 50)
+```
+
+
+A few missing due to jitter and divide by 0   
+
 ```{r, fig.width=11, fig.height=6}
 all_corrs <- emp_corrs / sim_corrs
 ```
@@ -565,7 +601,7 @@ all_corrs
 ```
 
 ```{r}
-#ggsave("../paper/figs/pieces/fig2_perf_corrs.png", all_corrs, height = 6, width=11, dpi=300)
+#ggsave("../paper/figs/pieces/fig2_perf_corrs.png", all_corrs, height = 5.4, width=12, dpi=300)
 ```
 
 
@@ -721,6 +757,7 @@ summary(pcor_p1_test_quad <-
                 data=test_df %>% filter(phase==1), 
                 family="binomial", control = glmerControl(optimizer = "bobyqa")))
 ```
+
 
 
 Predictions look reasonable and do fit a clear inverted U  
@@ -1108,13 +1145,11 @@ emp_np_si_plot <-
   annotate("rect", xmin=5.5, xmax=10.5, ymin=0, ymax=.22, alpha=0.2, fill="gray57") +
   annotate("text", x=3, y=.20, label="Phase 1", size=8) +
   annotate("text", x=7.5, y=.20, label="Phase 2", size=8) +
-  ga + ap + tol + xlab("Simulus iteration") + ylab("") + tp + 
-  ggtitle("Empirical") + scale_color_gradient2() + ylim(-.1, .23)
+  ga + ap + tol + xlab("Simulus iteration") + ylab("Neutral preference") + tp + 
+  ggtitle("Empirical") + scale_color_gradient2() + ylim(-.1, .23) + scale_x_continuous(breaks = seq(1, 10, by = 1))
 emp_np_si_plot
   #move_layers(emp_np_si_plot, "GeomPoint", position = "top")
 ```
-
-
 
 
 Capture by sims 
@@ -1220,7 +1255,6 @@ np_p1_brms <-
   read.csv("../model_res/brms_res/neutral_pref_time_effect_phase1__66703__.csv")
 np_p2_brms <- 
   read.csv("../model_res/brms_res/neutral_pref_time_effect_phase2__28768__.csv")
-
 ```
 
 ```{r}
@@ -1262,8 +1296,6 @@ np_test_summs_m <- test_error_df %>% group_by(phase) %>%
 # 
 # round(np_test_summs_m$neutral_pref, 4)
 # round(np_test_si_sew$neutral_pref, 4)
-
-
 ```
 
 In contrast to during learning, participants do not appear to retain much ability to avoid the wost stimuli during test  
@@ -1358,15 +1390,28 @@ And the model correctly predicts poor retained ability to avoid punishment over 
 ```{r}
 sim_m35_np_si_test_plot <- 
   ggplot(np_test_summs_m35_sim , aes(x=as.factor(phase), y=neutral_pref, fill=as.factor(phase))) +
-       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line 
-  geom_jitter(data=np_test_summs_m35_sim_var, height=0, width=.2, size=3, alpha=.8) + 
+       geom_hline(yintercept=.0, size=1.5, color="gray57") + # chance line
   geom_bar(stat="identity", color="black", alpha=.8) + 
+  geom_point(data=np_test_summs_m35_sim_var, aes(x=as.factor(phase), y=neutral_pref, group=iter), 
+             size=3, 
+             alpha=.8, position=position_dodge(width=.2)) +
+  # geom_line(data=np_test_summs_m35_sim_var, 
+  #           aes(x=as.factor(phase), y=neutral_pref, color=iter, group=iter),
+  #           size=.8, position=position_dodge(width=.2)) +
+  #geom_jitter(data=np_test_summs_m35_sim_var, position=position_dodge(width=.2), size=3, alpha=.8) +
+  
+  #geom_line(data=np_test_summs_m35_sim_var, height=0, width=.2, size=3, alpha=.8, group=phase) +
+  
   ga + ap + tol + xlab("Phase") + ylab("") + tp + 
   ggtitle(#"Neutral preference during Test 
           "Simulated") + scale_fill_manual(values=c("gray81", "gray40")) + ylim(-.05, .23)
 sim_m35_np_si_test_plot
 ```
 
+
+```{r}
+np_test_summs_m35_sim_var
+```
 
 Whereas a model that sets $\alpha_{neg} = \alpha_{pos}$ incorrectly predicts a retained neutral preference at a similar level to what is observed empirically at the highest points during learning  
 
@@ -1553,13 +1598,18 @@ Sum scores
 qdf$BDI_sum <- rowSums(qdf[, grep("BDI", names(qdf))])
 qdf$GAD_sum <- rowSums(qdf[, grep("GAD", names(qdf))])
 qdf$RRS_sum <- rowSums(qdf[, grep("RRS", names(qdf))])
-qdf$depr_anx_sum <- qdf$BDI_sum + qdf$GAD_sum
+#qdf$depr_anx_norm_sum <- qdf$BDI_sum + qdf$GAD_sum
+
+qdf$depr_anx_norm_sum <- (scale(qdf$BDI_sum) + scale(qdf$GAD_sum))/2 # Corrected sum of normalized vals for revision 4/18/25 
+hist(qdf$depr_anx_norm_sum, breaks=100)
 ```
+
 
 ```{r}
 #any(is.na(qdf))
 #write.csv(qdf, "../data/questionnaire_df_with_impute.csv")
 ```
+
 
 Put depr/anxisety sum and GAD sum into learn df  
 
@@ -1568,14 +1618,14 @@ Put depr/anxisety sum and GAD sum into learn df
 unique_ids <- unique(learn_df$ID)
 for (i in 1:length(unique_ids)) {
   
-  learn_df[learn_df$ID==unique_ids[i], "depr_anx_sum"] <- 
-    qdf[qdf$ID==unique_ids[i], "depr_anx_sum"]
+  learn_df[learn_df$ID==unique_ids[i], "depr_anx_norm_sum"] <-
+    as.numeric(qdf[qdf$ID==unique_ids[i], "depr_anx_norm_sum"])
   learn_df[learn_df$ID==unique_ids[i], "bdi_sum"] <- qdf[qdf$ID==unique_ids[i], "BDI_sum"]
   learn_df[learn_df$ID==unique_ids[i], "gad_sum"] <- qdf[qdf$ID==unique_ids[i], "GAD_sum"]
   learn_df[learn_df$ID==unique_ids[i], "rrs_sum"] <- qdf[qdf$ID==unique_ids[i], "RRS_sum"]
   
-  test_df[test_df$ID==unique_ids[i], "depr_anx_sum"] <- 
-    qdf[qdf$ID==unique_ids[i], "depr_anx_sum"]
+  test_df[test_df$ID==unique_ids[i], "depr_anx_norm_sum"] <-
+    as.numeric(qdf[qdf$ID==unique_ids[i], "depr_anx_norm_sum"])
   test_df[test_df$ID==unique_ids[i], "bdi_sum"] <- qdf[qdf$ID==unique_ids[i], "BDI_sum"]
   test_df[test_df$ID==unique_ids[i], "gad_sum"] <- qdf[qdf$ID==unique_ids[i], "GAD_sum"]
   test_df[test_df$ID==unique_ids[i], "rrs_sum"] <- qdf[qdf$ID==unique_ids[i], "RRS_sum"]
@@ -1584,8 +1634,12 @@ for (i in 1:length(unique_ids)) {
 
 ```{r}
 # Check 
-# hist(learn_df$depr_anx_sum)
-# hist(test_df$depr_anx_sum)
+# hist(learn_df$depr_anx_norm_sum)
+# hist(test_df$depr_anx_norm_sum)
+
+hist(learn_df$depr_anx_norm_sum)
+hist(test_df$depr_anx_norm_sum)
+
 # 
 # hist(learn_df$rrs_sum)
 # hist(test_df$rrs_sum)
@@ -1676,8 +1730,8 @@ sym_plot
 ## Behavioral performance and individual differences   
 
 ```{r}
-cor.test(learn_m$m, qdf$depr_anx_sum)
-cor.test(test_m$m, qdf$depr_anx_sum)
+cor.test(learn_m$m, qdf$depr_anx_norm_sum)
+cor.test(test_m$m, qdf$depr_anx_norm_sum)
 cor.test(learn_m$m, qdf$RRS_sum)
 cor.test(test_m$m, qdf$RRS_sum)
 ```
@@ -1708,19 +1762,19 @@ median(qdf$GAD_sum)
 ```
 
 ```{r}
-hist(qdf$depr_anx_sum, breaks=100)
-median(qdf$depr_anx_sum)
-table(if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0))
+hist(qdf$depr_anx_norm_sum, breaks=100)
+median(qdf$depr_anx_norm_sum)
+table(if_else(qdf$depr_anx_norm_sum > median(qdf$depr_anx_norm_sum), 1, 0))
       
-#table(if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0)) # Check that's about half
-qdf$DA_hilo <- if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0)
-qdf %>% group_by(DA_hilo) %>% summarize(m=median(depr_anx_sum)) # Confirm
+#table(if_else(qdf$depr_anx_norm_sum > median(qdf$depr_anx_norm_sum), 1, 0)) # Check that's about half
+qdf$DA_hilo <- if_else(qdf$depr_anx_norm_sum > median(qdf$depr_anx_norm_sum), 1, 0)
+qdf %>% group_by(DA_hilo) %>% summarize(m=median(depr_anx_norm_sum)) # Confirm
 ```
 
 ```{r}
-#table(if_else(qdf$depr_anx_sum > median(qdf$depr_anx_sum), 1, 0))
+#table(if_else(qdf$depr_anx_norm_sum > median(qdf$depr_anx_norm_sum), 1, 0))
 qdf$dep_hilo <- if_else(qdf$BDI_sum > median(qdf$BDI_sum), 1, 0)
-#qdf %>% group_by(dep_hilo) %>% summarize(m=median(depr_anx_sum)) 
+#qdf %>% group_by(dep_hilo) %>% summarize(m=median(depr_anx_norm_sum)) 
 ```
 
 ```{r}
@@ -1876,11 +1930,18 @@ ggplot(np_test_si_da, aes(x=phase, y=neutral_pref, fill=phase)) +
 Performace in terms of proprortion correct  
 
 ```{r}
-phase1_learn_perf <- read.csv("../model_res/brms_res/reduced_perf_model_phase1__86050__.csv")
+# phase1_learn_perf <- read.csv("../model_res/brms_res/reduced_perf_model_phase1__86050__.csv")
+# 
+# phase2_learn_perf <- read.csv("../model_res/brms_res/reduced_correct_perf_model_phase2__76459__.csv")
+# 
+# test_perf <- read.csv("../model_res/brms_res/reduced_correct_test_model__24237__.csv")
 
-phase2_learn_perf <- read.csv("../model_res/brms_res/reduced_correct_perf_model_phase2__76459__.csv")
+# Replacement sum score 4/21/25 reviewer 3 
+phase1_learn_perf <- read.csv("../model_res/brms_res/reduced_perf_model_phase1__75567__.csv")
 
-test_perf <- read.csv("../model_res/brms_res/reduced_correct_test_model__24237__.csv")
+phase2_learn_perf <- read.csv("../model_res/brms_res/reduced_correct_perf_model_phase2__14248__.csv")
+
+test_perf <- read.csv("../model_res/brms_res/reduced_correct_test_model__89989__.csv")
 ```
 
 ```{r}
@@ -1894,9 +1955,9 @@ ReturnPosteriorMeanAnd90CI <- function(posterior) {
 Neutral preference  
 
 ```{r}
-np_da <- read.csv("../model_res/brms_res/neutral_pref_learn_model__64424__.csv")
+np_da <- read.csv("../model_res/brms_res/neutral_pref_learn_model__30606__.csv")
 # Version that converged that has intercept set to 0 but models REs in depr/anx  
-np_test_da <- read.csv("../model_res/brms_res/neutral_pref_test_model_0int__14655__.csv")
+np_test_da <- read.csv("../model_res/brms_res/neutral_pref_test_model_0int__18974__.csv")
 ```
 
 Rumination
@@ -1919,11 +1980,14 @@ Phase 1
 
 
 ```{r}
+#phase1_learn_perf$b_scaledepr_anx_norm_sum.scaleset_size
 cat("\n Depression prop correct phase 1: \n")
 # DA  
-ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_sum)
+#ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_norm_sum)
+ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_norm_sum)
 ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaleset_size) # Sanity check this is negative and tight  
-ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_sum.scaleset_size)
+#ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_norm_sum.scaleset_size)
+ReturnPosteriorMeanAnd90CI(phase1_learn_perf$b_scaledepr_anx_norm_sum.scaleset_size)
 
 cat("\n\n Rumination prop correct phase 1: \n")
 # Rum 
@@ -1937,9 +2001,11 @@ Phase 2
 ```{r}
 # DA  
 cat("\n\n Depression prop correct phase 2: \n")
-ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_sum)
+#ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_norm_sum)
+ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_norm_sum)
 ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaleset_size) # Sanity check this is negative and tight  
-ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_sum.scaleset_size)
+#ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_norm_sum.scaleset_size)
+ReturnPosteriorMeanAnd90CI(phase2_learn_perf$b_scaledepr_anx_norm_sum.scaleset_size)
 
 # Rum 
 cat("\n\n Rumination prop correct phase 2: \n")
@@ -1953,7 +2019,8 @@ Test
 ```{r}
 # DA  
 cat("\n\n Depression prop correct test: \n")
-ReturnPosteriorMeanAnd90CI(test_perf$b_scaledepr_anx_sum)
+#ReturnPosteriorMeanAnd90CI(test_perf$b_scaledepr_anx_norm_sum)
+ReturnPosteriorMeanAnd90CI(test_perf$b_scaledepr_anx_norm_sum)
 
 # Rum 
 cat("\n\n Rumination prop correct test: \n")
@@ -1970,7 +2037,7 @@ The intercept posteriors show that the evidence for a neutral preference found i
 ```{r}
 cat("\n Depression : \n")
 cat("\n Evidence controlling for depression : "); ReturnPosteriorMeanAnd90CI(np_da$b_Intercept)
-cat("\n Evidence for depession effect : ");ReturnPosteriorMeanAnd90CI(np_da$b_scaledepr_anx_sum)
+cat("\n Evidence for depession effect : ");ReturnPosteriorMeanAnd90CI(np_da$b_scaledepr_anx_norm_sum)
 
 cat("\n Rumination : \n")
 cat("\n Evidence controlling for rumination : "); ReturnPosteriorMeanAnd90CI(np_rum$b_Intercept)
@@ -1984,7 +2051,7 @@ Note that HDI for intercept (indicating neutral pref at test) includes 0 (althou
 ```{r}
 cat("\n Depression : \n")
 cat("\n Evidence controlling for depression : "); ReturnPosteriorMeanAnd90CI(np_test_da$b_Intercept)
-cat("\n Evidence for depession effect : ");ReturnPosteriorMeanAnd90CI(np_test_da$b_scaledepr_anx_sum)
+cat("\n Evidence for depession effect : ");ReturnPosteriorMeanAnd90CI(np_test_da$b_scaledepr_anx_norm_sum)
 
 cat("\n Rumination : \n")
 cat("\n Evidence controlling for rumination : "); ReturnPosteriorMeanAnd90CI(np_test_rum$b_Intercept)
@@ -1994,11 +2061,11 @@ cat("\n Evidence for rumination effect : ");ReturnPosteriorMeanAnd90CI(np_test_r
 Make sure Rhats below 1.1  
 
 ```{r}
-CheckRhat("../model_res/brms_res/Rhatreduced_correct_perf_model_phase2__76459__.csv")
-CheckRhat("../model_res/brms_res/Rhatreduced_perf_model_phase1__86050__.csv")
-CheckRhat("../model_res/brms_res/Rhatreduced_correct_test_model__24237__.csv")
-CheckRhat("../model_res/brms_res/Rhatneutral_pref_learn_model__64424__.csv")
-CheckRhat("../model_res/brms_res/Rhatneutral_pref_test_model__70753__.csv")
+CheckRhat("../model_res/brms_res/Rhatreduced_correct_perf_model_phase2__14248__.csv")
+CheckRhat("../model_res/brms_res/Rhatreduced_perf_model_phase1__75567__.csv")
+CheckRhat("../model_res/brms_res/Rhatreduced_correct_test_model__89989__.csv")
+CheckRhat("../model_res/brms_res/Rhatneutral_pref_learn_model__30606__.csv")
+CheckRhat("../model_res/brms_res/Rhatneutral_pref_test_model_0int__18974__.csv")
 ```
 ```{r}
 CheckRhat("../model_res/brms_res/RhatRUM_neutral_pref_learn_model__89767__.csv")
@@ -2013,16 +2080,16 @@ Get ready to plot proportion correct posterior for depr/anxiety ...
 
 ```{r}
 depr_anx_learn_perf_posteriors <- rbind(
-  data.frame("trace"=phase1_learn_perf$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Learn Phase 1"),
-  data.frame("trace"=phase2_learn_perf$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Learn Phase 2"),
-  data.frame("trace"=phase1_learn_perf$b_scaledepr_anx_sum.scaleset_size, 
+  data.frame("trace"=phase1_learn_perf$b_scaledepr_anx_norm_sum, "label"="da_main_effect", "phase"="Learn Phase 1"),
+  data.frame("trace"=phase2_learn_perf$b_scaledepr_anx_norm_sum, "label"="da_main_effect", "phase"="Learn Phase 2"),
+  data.frame("trace"=phase1_learn_perf$b_scaledepr_anx_norm_sum.scaleset_size, 
              "label"="da_ss_int", "phase"="Learn Phase 1"),
-  data.frame("trace"=phase2_learn_perf$b_scaledepr_anx_sum.scaleset_size, 
+  data.frame("trace"=phase2_learn_perf$b_scaledepr_anx_norm_sum.scaleset_size, 
              "label"="da_ss_int", "phase"="Learn Phase 2")
 )  
 
 depr_anx_test_perf_posterior <- rbind(
-  data.frame("trace"=test_perf$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Test")
+  data.frame("trace"=test_perf$b_scaledepr_anx_norm_sum, "label"="da_main_effect", "phase"="Test")
 )  
 ```
 
@@ -2059,8 +2126,9 @@ test_correct_posterior_p
 ```
 
 ```{r}
-# ggsave("../paper/figs/pieces/fig7_learn_correct_posterior_p.png", learn_correct_posterior_p, width=2.2, height=3.3, dpi=500)
-# ggsave("../paper/figs/pieces/fig7_test_correct_posterior_p.png", 
+# Resaved with now-supp 4/25 bc now this fig in supplement
+# ggsave("../paper/figs/pieces/now-supp-fig7_learn_correct_posterior_p.png", learn_correct_posterior_p, width=2.2, height=3.3, dpi=500)
+# ggsave("../paper/figs/pieces/now-supp-fig7_test_correct_posterior_p.png",
 #        test_correct_posterior_p, width=2.2, height=1.65, dpi=500)
 ```
 
@@ -2127,8 +2195,8 @@ Get ready to plot neutral pref posterior for depr/anxiety  and rum
 
 ```{r}
 depr_anx_np_posteriors <- rbind(
-  data.frame("trace"=np_da$b_scaledepr_anx_sum, "label"="da_effect", "phase"="Learn"),
-  data.frame("trace"=np_test_da$b_scaledepr_anx_sum, "label"="da_main_effect", "phase"="Test")
+  data.frame("trace"=np_da$b_scaledepr_anx_norm_sum, "label"="da_effect", "phase"="Learn"),
+  data.frame("trace"=np_test_da$b_scaledepr_anx_norm_sum, "label"="da_main_effect", "phase"="Test")
 )  
 
 rum_np_posteriors <- rbind(
@@ -2174,8 +2242,8 @@ rum_np_posterior_p
 
 
 ```{r}
-# ggsave("../paper/figs/pieces/fig7_np_da_posterior_p.png", np_da_posterior_p , 
-#        width=2.2, height=3.3, dpi=500)
+# ggsave("../paper/figs/pieces/now-supp-test-fig7_np_da_posterior_p.png", np_da_posterior_p ,
+#        width=2.2, height=3.3, dpi=500) # new name 4/25/25
 # ggsave("../paper/figs/pieces/fig7_rum_np_posterior_p.png",
 #        rum_np_posterior_p, width=2.2, height=3.3, dpi=500)
 ```
@@ -2191,7 +2259,8 @@ assert(all(learn_m$ID==qdf$ID))
 assert(all(m35$ID==qdf$ID))
 assert(all(m35$ID==learn_m$ID))
 assert(all(m35$ID==test_m$ID))
-m35$depr_anx_sum <- qdf$depr_anx_sum
+#m35$depr_anx_norm_sum <- qdf$depr_anx_norm_sum
+m35$depr_anx_norm_sum <- qdf$depr_anx_norm_sum
 m35$BDI_sum <- qdf$BDI_sum
 m35$GAD_sum <- qdf$GAD_sum
 m35$RRS_sum <- qdf$RRS_sum
@@ -2214,6 +2283,9 @@ summary(learn_preds_bayes <- rstanarm::stan_glm(
              scale(not_pun_bonus), 
              data=m35))
 ```
+
+
+
 ```{r}
 summary(test_preds_bayes <- rstanarm::stan_glm(
   scale(test_m) ~
@@ -2230,7 +2302,7 @@ summary(test_preds_bayes <- rstanarm::stan_glm(
 
 ```{r}
 summary(da_preds_bayes <- rstanarm::stan_glm(
-  scale(depr_anx_sum) ~
+  scale(depr_anx_norm_sum) ~
              scale(kappa) +
              scale(alpha_pos) +
              scale(alpha_neg) +
@@ -2326,7 +2398,7 @@ ReturnPosteriorMeanAnd90CI(da_traces$scale.alpha_neg.)
 Robustness check in univariate models the results aligned w hypotheses 
 ```{r}
 summary(npb_da_preds_bayes <- rstanarm::stan_glm(
-  scale(depr_anx_sum) ~
+  scale(depr_anx_norm_sum) ~
              
              scale(not_pun_bonus), 
              data=m35))
@@ -2367,7 +2439,7 @@ all_ests <- rbind(learn_est, test_est, da_est, rrs_est)
 all_ests$label <- factor(all_ests$label, levels=c("Learning", "Test", "Depr/anx", "Rumination"))
 ```
 
-```{r, fig.width=12}
+```{r, fig.height=8, fig.width=14}
 all_ests_p <- ggplot(all_ests, #%>% filter(category=="Proportion correct"), 
        aes(y=coef, x=m, fill=label)) + 
   geom_vline(xintercept=0, size=1.3, color="gray35") +
@@ -2404,27 +2476,34 @@ Spot checks of plot
 # hist(test_traces$scale.epsilon.)
 ```
 
+```{r}
+write.csv(data.frame("label"=all_ests$label, round(data.frame(all_ests %>% select("lb_10", "ub_90", "m")), 3)), "../data/table_out.csv")
+all_ests %>% select("lb_10", "ub_90", "m", "label")
+all_ests
+```
 
 ```{r}
 # ggsave("../paper/figs/pieces/fig8_modelpar_posteriors.png", all_ests_p , 
+#        width=14, height=12, dpi=500)
+# ggsave("../paper/figs/pieces/nowfig7_modelpar_posteriors.png", all_ests_p ,
 #        width=14, height=12, dpi=500)
 ```
 
 Robustness check in univariate models the results aligned w hypotheses 
 ```{r}
 summary(phi_da_preds_bayes <- rstanarm::stan_glm(
-  scale(depr_anx_sum) ~
+  scale(depr_anx_norm_sum) ~
              
              scale(phi), 
              data=m35))
 
 summary(kappa_da_preds_bayes <- rstanarm::stan_glm(
-  scale(depr_anx_sum) ~
+  scale(depr_anx_norm_sum) ~
              scale(kappa),
              data=m35))
 
 summary(npb_da_preds_bayes <- rstanarm::stan_glm(
-  scale(depr_anx_sum) ~
+  scale(depr_anx_norm_sum) ~
              
              scale(not_pun_bonus), 
              data=m35))
@@ -2433,7 +2512,7 @@ summary(npb_da_preds_bayes <- rstanarm::stan_glm(
 
 Sanity check against predictions of frequentist models and check their VIF  
 ```{r}
-summary(da_preds <- lm(scale(depr_anx_sum) ~
+summary(da_preds <- lm(scale(depr_anx_norm_sum) ~
              scale(kappa) +
              scale(alpha_pos) +
              scale(alpha_neg) +
@@ -2505,6 +2584,7 @@ m41_v2 <- read.csv("../model_res/opt/best/BEST__RunHWMPRew47450.csv")
 m41 <- rbind(m41_v1, m41_v2) %>% group_by(ID) %>% slice(which.min(nll))
 #write.csv(m41, "../model_res/opt/best/BEST__m41_RunHWMPRew.csv")
 ```
+
 ```{r}
 hist(m41$learning_bias, breaks=100)
 ```
@@ -2761,3 +2841,584 @@ sim_m41_np_si_test_plot
 #ggsave("../paper/figs/pieces/supp6_emp_np_si.png", sim_m41_np_si_test_plot, height = 4, width=5, dpi=300)
 ```
 
+
+# Revision 1 analyses  - April 2025   
+
+## Comp models  
+
+### A model without CK-off (R2)
+
+```{r}
+m45_v1 <- read.csv("../model_res/opt/r1/BEST__RunHWMPRewNoCKOff40569.csv")
+m45_v2 <- read.csv("../model_res/opt/r1/BEST__RunHWMPRewNoCKOff55467.csv")
+m45 <- rbind(m45_v1, m45_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+
+```{r}
+m45$aic <- 2*7 + (2*m45$nll)
+m35$aic <- 2*8 + (2*m35$nll)
+m41$aic <- 2*8 + (2*m41$nll)
+```
+
+Better than m41 - as expected given that CK_off largely drops out   
+
+But m35 is better  
+
+```{r}
+sum(m45$aic-m41$aic)
+sum(m45$aic-m35$aic)
+```
+
+
+## A model without alpha-neg (R2)   
+
+
+```{r}
+m44_v1 <- read.csv("../model_res/opt/r1/BEST__RunRLWMPRewNoAlphaNeg39961.csv")
+m44_v2 <- read.csv("../model_res/opt/r1/BEST__RunRLWMPRewNoAlphaNeg71023.csv")
+m44 <- rbind(m44_v1, m44_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+```{r}
+m44$aic <- 2*7 + (2*m44$nll)
+```
+
+```{r}
+sum(m44$aic-m35$aic)
+```
+
+### Beta as free par (R1)   
+
+```{r}
+m43_v1 <- read.csv("../model_res/opt/r1/BEST__RunRLWMPRewFreeBeta48142.csv")
+m43_v2 <- read.csv("../model_res/opt/r1/BEST__RunRLWMPRewFreeBeta74624.csv")
+m43 <- rbind(m43_v1, m43_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+```{r}
+m43
+```
+
+```{r}
+m43$aic <- 2*9 + (2*m43$nll)
+```
+
+```{r}
+sum(m43$aic-m35$aic)
+```
+
+```{r}
+hist(m43$beta, breaks=100)
+```
+```{r}
+median(m43$beta)
+range(m43$beta)
+```
+
+
+### Cooperative model (R1)  
+
+```{r}
+m46_v1 <- read.csv("../model_res/opt/r1/BEST__RunRLWMPRewRLCoop28307.csv")
+m46_v2 <- read.csv("../model_res/opt/r1/BEST__RunRLWMPRewRLCoop43691.csv")
+m46 <- rbind(m46_v1, m46_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+
+
+```{r}
+m46$aic <- 2*8 + (2*m46$nll)
+m46$aic
+```
+
+```{r}
+sum(m46$nll-m35$nll)
+```
+
+
+
+Fits much worse so checking estimates are basically consistent  
+```{r}
+ComparePars(m46$kappa, m35$kappa)
+```
+
+```{r}
+ComparePars(m46$phi, m35$phi)
+```
+
+```{r}
+ComparePars(m46$alpha_pos, m35$alpha_pos, use_identity_line = 0)
+```
+
+```{r}
+ComparePars(m46$epsilon, m35$epsilon, use_identity_line = 0)
+```
+
+
+
+## Reran rstanarm models for diagnostic stats  (R3)    
+
+```{r}
+# summary(learn_preds_bayes <- rstanarm::stan_glm(
+#   scale(learn_m) ~
+#              scale(kappa) +
+#              scale(alpha_pos) +
+#              scale(alpha_neg) +
+#              scale(phi) +
+#              scale(rho) +
+#              scale(rl_off) +
+#              scale(epsilon) +
+#              scale(not_pun_bonus), 
+#              data=m35))
+# 
+# 
+# summary(test_preds_bayes <- rstanarm::stan_glm(
+#   scale(test_m) ~
+#              scale(kappa) +
+#              scale(alpha_pos) +
+#              scale(alpha_neg) +
+#              scale(phi) +
+#              scale(rho) +
+#              scale(rl_off) +
+#              scale(epsilon) +
+#              scale(not_pun_bonus), 
+#              data=m35))
+# 
+# summary(da_preds_bayes <- rstanarm::stan_glm(
+#   scale(depr_anx_norm_sum) ~
+#              scale(kappa) +
+#              scale(alpha_pos) +
+#              scale(alpha_neg) +
+#              scale(phi) +
+#              scale(rho) +
+#              scale(rl_off) +
+#              scale(epsilon) +
+#              scale(not_pun_bonus), 
+#              data=m35))
+# 
+# summary(rrs_preds_bayes <- rstanarm::stan_glm(
+#   scale(RRS_sum) ~
+#              scale(kappa) +
+#              scale(alpha_pos) +
+#              scale(alpha_neg) +
+#              scale(phi) +
+#              scale(rho) +
+#              scale(rl_off) +
+#              scale(epsilon) +
+#              scale(not_pun_bonus), 
+#              data=m35))
+```
+
+
+
+
+## Check if there's evidence for a phase effect in test neutral-preference (R1)  
+
+```{r}
+phase_test <- read.csv("../model_res/brms_res/neutral_pref_test_effect__20330__.csv")
+```
+
+
+```{r}
+hist(phase_test$b_phase, breaks=100)
+```
+
+```{r}
+ReturnPosteriorMeanAnd90CI(phase_test$b_phase)
+```
+
+
+## Visualizing subsets of pts for whom a given par wasn't important (R2)  
+
+```{r}
+names(m35)
+```
+
+kappa, phi, rho, alpha-pos, alpha-neg, RL-off, non-pun-bonus, epsilon   
+
+```{r}
+PlotParHist <- function(model_df, param, tex_string) {
+  ggplot(model_df, aes(x=param)) + 
+  geom_vline(xintercept=median(param), size=4) +  
+  geom_histogram(fill="white", color="black") + ga + ap + ylab("") + 
+    ggtitle(TeX(tex_string)) + tp + xlab("") + 
+    theme(axis.text = element_text(size=15))
+}
+```
+
+
+```{r}
+p1 <- PlotParHist(m35, m35$kappa, '$\\kappa')
+p2 <- PlotParHist(m35, m35$rho, '$\\rho')
+p3 <- PlotParHist(m35, m35$phi, '$\\phi')
+p4 <- PlotParHist(m35, m35$alpha_pos, '$\\alpha_{+}')
+p5 <- PlotParHist(m35, m35$alpha_neg, '$\\alpha_{-}')
+p6 <- PlotParHist(m35, m35$rl_off, '$\\RL^{off}')
+p7 <- PlotParHist(m35, m35$not_pun_bonus, '$\\non-pun_{bonus}')
+p8 <- PlotParHist(m35, m35$epsilon, '$\\epsilon')
+```
+
+```{r}
+wm_pars <- p1 + p2 + p3
+rl_pars <- p4 + p5 + p6
+other_pars <- p7 + p8 + p6
+```
+
+```{r, fig.width=11, fig.height=4.5}
+wm_pars
+```
+```{r, fig.width=11, fig.height=4.5}
+rl_pars
+```
+
+```{r, fig.width=11, fig.height=4.5}
+other_pars # RL off again just for balance in figure - cropped for paper fig 
+```
+
+```{r}
+ggsave("../paper/figs/pieces/par_distr_part1.png", wm_pars, height = 4.5, width=11, dpi=300)
+ggsave("../paper/figs/pieces/par_distr_part2.png", rl_pars, height = 4.5, width=11, dpi=300)
+ggsave("../paper/figs/pieces/par_distr_part3.png", other_pars, height = 4.5, width=11, dpi=300)
+```
+
+
+## Total proportion of error trials  (R2)
+
+
+```{r}
+table(learn_df$correct)[1]/nrow(learn_df)
+table(test_df$correct)[1]/nrow(test_df)
+```
+
+
+## Test if the quadratic term is significant in simulations not just in 
+
+
+
+
+```{r}
+all_effs <- foreach (i = unique(m35_s$iter)) %do% {
+
+  pcor_p1_si6_quad_sim <- NULL; pcor_p1_p1test_quad_sim <- NULL; effects_out <- NULL
+  summary(pcor_p1_si6_quad_sim <- 
+          glmer(corrects ~ poly(set_size, 2)  + 
+                        (1|ID), 
+                data=m35_s_learn %>% filter(stim_iter==6  & iter==i), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))
+  
+  summary(pcor_p1_p1test_quad_sim <- 
+          glmer(corrects ~ poly(set_size, 2)  + 
+                        (1|ID), 
+                data=m35_s_test %>% filter(phase==1  & iter==i), 
+                family="binomial", control = glmerControl(optimizer = "bobyqa")))
+  
+  effects_out <- data.frame("si6_est"=coef(summary(pcor_p1_si6_quad_sim))[3, 1], 
+             "s6_p"=coef(summary(pcor_p1_si6_quad_sim))[3, 4],
+             "p1test_est"=coef(summary(pcor_p1_p1test_quad_sim))[3, 1], 
+             "p1test_p"=coef(summary(pcor_p1_p1test_quad_sim))[3, 4]
+             )  
+
+} %>% bind_rows()
+```
+
+
+```{r}
+si6_b0 <- all_effs %>% filter(!si6_est > 0)
+nrow(si6_b0 %>% filter(!s6_p > .05))/nrow(all_effs)
+```
+
+```{r}
+p1_b0 <- all_effs %>% filter(!p1test_est > 0)
+nrow(p1_b0 %>% filter(!p1test_p > .05))/nrow(all_effs)
+```
+
+
+
+## Test if parameter ~ symptom relationships differ for depr or anxiety alone  (R2) 
+
+
+```{r}
+summary(dep_preds_bayes <- rstanarm::stan_glm(
+  scale(BDI_sum) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+```
+
+```{r}
+summary(anx_preds_bayes <- rstanarm::stan_glm(
+  scale(GAD_sum) ~
+             scale(kappa) +
+             scale(alpha_pos) +
+             scale(alpha_neg) +
+             scale(phi) +
+             scale(rho) +
+             scale(rl_off) +
+             scale(epsilon) +
+             scale(not_pun_bonus), 
+             data=m35))
+```
+
+Get traces for each par  
+
+
+```{r}
+dep_traces <- data.frame(as.matrix(dep_preds_bayes))
+
+dep_est <- ExtractEstimates(dep_traces)
+dep_est$label <- "Depr/anx"
+dep_est$category <- "Symptoms"
+dep_est <- dep_est %>% filter(!coef %in% c("sigma", "X.Intercept."))
+```
+
+
+```{r}
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.alpha_neg.)
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.alpha_pos.) 
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.kappa.)
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.phi.)
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.rho.)
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.rl_off.)
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.epsilon.)
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.not_pun_bonus.)
+```
+
+```{r}
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.kappa.)
+ReturnPosteriorMeanAnd90CI(dep_traces$scale.phi.)
+```
+
+
+```{r}
+anx_traces <- data.frame(as.matrix(anx_preds_bayes))
+
+anx_est <- ExtractEstimates(anx_traces)
+anx_est$label <- "Depr/anx"
+anx_est$category <- "Symptoms"
+anx_est <- anx_est %>% filter(!coef %in% c("sigma", "X.Intercept."))
+```
+
+
+
+```{r}
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.alpha_neg.)
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.alpha_pos.) 
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.kappa.)
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.phi.)
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.rho.)
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.rl_off.)
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.epsilon.)
+ReturnPosteriorMeanAnd90CI(anx_traces$scale.not_pun_bonus.)
+```
+
+```{r}
+dep_anx_sep_ests <- rbind(
+  data.frame("label"="Depression (BDI-II)", dep_est),
+  data.frame("label"="Anxiety (GAD-7)", anx_est)
+)
+
+```
+
+
+```{r}
+all_dep_anx_ests <- rbind(dep_est, anx_est)
+all_dep_anx_ests$label <- factor(all_dep_anx_ests$label, levels=c("Depression", "Anxiety"))
+```
+```{r}
+all_dep_anx_ests
+```
+
+```{r, fig.width=12}
+all_dep_anx_ests_p <- 
+  ggplot(dep_anx_sep_ests, #%>% filter(category=="Proportion correct"), 
+       aes(y=coef, x=m, fill=label)) + 
+  geom_vline(xintercept=0, size=1.3, color="gray35") +
+  geom_vline(xintercept=c(-.5, -.25, .25, .5), color="gray65") +
+  geom_errorbar(aes(xmin=lb_10, xmax=ub_90), width=.2, position=position_dodge(width=.4), size=1.5) +
+  geom_point(pch=21, size=5, alpha=.9, position=position_dodge(width=.4)) + ga + ap + lp + 
+  ylab("Regression coefficient \n of model parameter") + 
+  xlab("Mean and 90% credible interval") +
+  scale_y_discrete(labels=rev(c(
+    TeX('$\\RL^{off}'),
+    TeX('$\\rho'),
+    TeX('$\\phi'),
+    TeX('$\\n-p_{b}'),
+    TeX('$\\kappa'),
+    TeX('$\\epsilon'),
+    TeX('$\\alpha_{+}'),
+    TeX('$\\alpha_{-}')))) + ft +
+  scale_fill_manual(values=c("orange1", "darkorange3")) +
+  scale_x_continuous(labels=function(x) sprintf("%.1f", x)) + theme(axis.text.y = element_text(size=32)) #+ tol
+
+```
+
+
+```{r}
+# ggsave("../paper/figs/pieces/supp9_modelpar_posteriors.png", all_dep_anx_ests_p ,
+#        width=14, height=12, dpi=500)
+```
+
+
+
+## Descriptives for depression and anxiety scores (R3)  
+
+```{r}
+mean(qdf$BDI_sum); sd(qdf$BDI_sum); range(qdf$BDI_sum)
+mean(qdf$GAD_sum); sd(qdf$GAD_sum); range(qdf$GAD_sum)
+```
+
+## Add raw data points and means to symptom plots (R3)  
+
+```{r}
+bdi_means <- qdf %>% group_by(group) %>% summarize(m=mean(BDI_sum))
+bdi_p_a <- ggplot(qdf, aes(x=BDI_sum, fill=group, color=group)) + 
+  
+  geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  ggtitle("Depression (BDI-II)") + tp + 
+  tol
+
+bdi_p_b <- ggplot(qdf, aes(x=BDI_sum, fill=group, color=group)) + 
+  geom_histogram(alpha=.4, position="identity") +
+  geom_vline(data=bdi_means, aes(xintercept = m, color=group), size=3) +
+  ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  tol + facet_wrap(group ~ .) + ft + 
+  theme(
+  strip.background = element_blank(), 
+  strip.text.x = element_blank(), 
+  axis.text = element_text(size=14))
+bdi_means
+bdi_p <- bdi_p_a/bdi_p_b
+bdi_p
+```
+
+Just for legend  
+```{r}
+# ggplot(qdf, aes(x=BDI_sum, fill=group, color=group)) +
+#   geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") +
+#   xlab("") +
+#   theme(axis.text.y = element_blank()) +
+#   theme(axis.ticks.y = element_blank()) +
+#   scale_fill_manual(values=c("red", "blue", "gray")) +
+#   scale_color_manual(values=c("red", "blue", "gray")) +
+#   ggtitle("Depression (BDI-II)") + tp
+```
+
+```{r}
+gad_means <- qdf %>% group_by(group) %>% summarize(m=mean(GAD_sum))
+
+# gad_p <- ggplot(qdf, aes(x=GAD_sum, fill=group, color=group)) + 
+#   geom_vline(data=gad_means, aes(xintercept = m, color=group), size=3) +
+#   geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+#   xlab("") + 
+#   theme(axis.text.y = element_blank()) + 
+#   theme(axis.ticks.y = element_blank()) + 
+#   scale_fill_manual(values=c("red", "blue", "gray")) +
+#   scale_color_manual(values=c("red", "blue", "gray")) + 
+#   ggtitle("Generalized anxiety (GAD-7)") + tp + 
+#   tol
+
+gad_p_a <- ggplot(qdf, aes(x=GAD_sum, fill=group, color=group)) + 
+  
+  geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  ggtitle("Generalized anxiety (GAD-7)") + tp + 
+  tol
+
+gad_p_b <- ggplot(qdf, aes(x=GAD_sum, fill=group, color=group)) + 
+  geom_vline(data=gad_means, aes(xintercept = m, color=group), size=3) +
+  geom_histogram(alpha=.4, position="identity") +
+  ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  tol + facet_wrap(group ~ .) + ft + 
+  theme(
+  strip.background = element_blank(), 
+  strip.text.x = element_blank(), 
+  axis.text = element_text(size=14))
+gad_means
+gad_p <- gad_p_a/gad_p_b
+gad_p
+```
+
+```{r}
+rrs_means <- qdf %>% group_by(group) %>% summarize(m=mean(RRS_sum))
+
+# rrs_p <- ggplot(qdf, aes(x=RRS_sum, fill=group, color=group)) + 
+#   geom_vline(data=rrs_means, aes(xintercept = m, color=group), size=3) +
+#   geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+#   xlab("") + 
+#   theme(axis.text.y = element_blank()) + 
+#   theme(axis.ticks.y = element_blank()) + 
+#   scale_fill_manual(values=c("red", "blue", "gray")) +
+#   scale_color_manual(values=c("red", "blue", "gray")) + 
+#   ggtitle("Rumination (RRS-SF)") + tp + 
+#   tol
+
+rrs_p_a <- ggplot(qdf, aes(x=RRS_sum, fill=group, color=group)) + 
+  #geom_vline(data=rrs_means, aes(xintercept = m, color=group), size=3) +
+  geom_density(alpha=.4, linewidth=3) + ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  ggtitle("Rumination (RRS-SF)") + tp + 
+  tol
+
+rrs_p_b <- ggplot(qdf, aes(x=RRS_sum, fill=group, color=group)) + 
+  geom_vline(data=rrs_means, aes(xintercept = m, color=group), size=3) +
+  geom_histogram(alpha=.4, position="identity") +
+  ga + ap + lp + ylab("") + 
+  xlab("") + 
+  theme(axis.text.y = element_blank()) + 
+  theme(axis.ticks.y = element_blank()) + 
+  scale_fill_manual(values=c("red", "blue", "gray")) +
+  scale_color_manual(values=c("red", "blue", "gray")) + 
+  tol + facet_wrap(group ~ .) + ft + 
+  theme(
+  strip.background = element_blank(), 
+  strip.text.x = element_blank(), 
+  axis.text = element_text(size=14))
+rrs_means
+rrs_p <- rrs_p_a/rrs_p_b
+rrs_p
+
+```
+
+```{r}
+# sum(table(qdf$group))
+# sym_plot <- bdi_p/ gad_p / rrs_p
+# 
+# sym_plot
+```
+
+
+```{r}
+ggsave("../paper/figs/supp-figs/sym-bdi.png", bdi_p, width=8.5, height = 4, dpi=200)
+ggsave("../paper/figs/supp-figs/sym-gad.png", gad_p, width=8.5, height = 4, dpi=200)
+ggsave("../paper/figs/supp-figs/sym-rrs.png", rrs_p, width=8.5, height = 4, dpi=200)
+```

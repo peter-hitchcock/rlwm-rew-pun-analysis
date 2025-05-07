@@ -156,6 +156,18 @@ RunOpt <- function(subj_combined_df, helpers, mle_model_res=NULL) {
         lapply(split(this_subj, list(this_subj$set_size, this_subj$stim_set)), function(x) RunRLWMP(parameters, x, helpers)) 
     }
     
+    if (helpers$which_model=="RunRLWMPRewFreeBeta") {
+      
+      opt_out <-
+        lapply(split(this_subj, list(this_subj$set_size, this_subj$stim_set)), function(x) RunRLWMPRewFreeBeta(parameters, x, helpers)) 
+    }
+    
+    if (helpers$which_model=="RunRLWMPRewNoAlphaNeg") {
+      
+      opt_out <-
+        lapply(split(this_subj, list(this_subj$set_size, this_subj$stim_set)), function(x) RunRLWMPRewNoAlphaNeg(parameters, x, helpers)) 
+    }
+    
     if (helpers$which_model=="RunRLWMPRew") {
       opt_out <-
         lapply(split(this_subj, list(this_subj$set_size, this_subj$stim_set)), function(x) RunRLWMPRew(parameters, x, helpers)) 
@@ -179,9 +191,20 @@ RunOpt <- function(subj_combined_df, helpers, mle_model_res=NULL) {
       
     }
     
+    if (helpers$which_model=="RunRLWMPRewRLCoop") {
+      opt_out <-
+        lapply(split(this_subj, list(this_subj$set_size, this_subj$stim_set)), function(x) RunRLWMPRewRLCoop(parameters, x, helpers)) 
+      
+    }
+    
     if (helpers$which_model=="RunHWMPRew") {
       opt_out <-
         lapply(split(this_subj, list(this_subj$set_size, this_subj$stim_set)), function(x) RunHWMPRew(parameters, x, helpers)) 
+    }
+    
+    if (helpers$which_model=="RunHWMPRewNoCKOff") {
+      opt_out <-
+        lapply(split(this_subj, list(this_subj$set_size, this_subj$stim_set)), function(x) RunHWMPRewNoCKOff(parameters, x, helpers)) 
     }
     
     if (helpers$which_model=="RunHWMPRew0Inits") {
@@ -976,10 +999,109 @@ RunOpt <- function(subj_combined_df, helpers, mle_model_res=NULL) {
           
         }
         
+        if (helpers$which_model=="RunRLWMPRewRLCoop") {
+          
+          # Set to control all standard range pars  
+          n_standard_pars <- 7
+          
+          params <- c(
+            kappa_init,
+            runif(n_standard_pars, 0, 1)
+          )
+          
+          names(params) <- helpers$par_names 
+          
+          lower_bound <- c(
+            1,
+            rep(0, n_standard_pars)
+          )
+          
+          upper_bound <- c(
+            kappa_custom_ub,
+            rep(1, n_standard_pars)
+          )
+          
+        }
+        
+        if (helpers$which_model=="RunRLWMPRewNoAlphaNeg") {
+          
+          # Set to control all standard range pars  
+          n_standard_pars <- 6
+          
+          params <- c(
+            kappa_init,
+            runif(n_standard_pars, 0, 1)
+          )
+          
+          names(params) <- helpers$par_names 
+          
+          lower_bound <- c(
+            1,
+            rep(0, n_standard_pars)
+          )
+          
+          upper_bound <- c(
+            kappa_custom_ub,
+            rep(1, n_standard_pars)
+          )
+          
+        }
+        
+        if (helpers$which_model=="RunRLWMPRewFreeBeta") {
+          
+          # Set to control all standard range pars  
+          n_standard_pars <- 7
+          
+          params <- c(
+            kappa_init,
+            runif(n_standard_pars, 0, 1),
+            50
+          )
+          
+          names(params) <- helpers$par_names 
+          
+          lower_bound <- c(
+            1,
+            rep(0, n_standard_pars),
+            0
+          )
+          
+          upper_bound <- c(
+            kappa_custom_ub,
+            rep(1, n_standard_pars), 
+            100
+          )
+          
+        }
+        
         if (helpers$which_model=="RunHWMPRew") {
           
           # Set to control all standard range pars  
           n_standard_pars <- 7
+          
+          params <- c(
+            kappa_init,
+            runif(n_standard_pars, 0, 1)
+          )
+          
+          names(params) <- helpers$par_names 
+          
+          lower_bound <- c(
+            1,
+            rep(0, n_standard_pars)
+          )
+          
+          upper_bound <- c(
+            kappa_custom_ub,
+            rep(1, n_standard_pars)
+          )
+          
+        }
+        
+        if (helpers$which_model=="RunHWMPRewNoCKOff") {
+          
+          # Set to control all standard range pars  
+          n_standard_pars <- 6
           
           params <- c(
             kappa_init,

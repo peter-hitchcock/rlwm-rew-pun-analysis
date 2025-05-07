@@ -6,7 +6,7 @@ RunSim <- function(this_fit_df, this_subj, helpers, n_iters=1) {
   } else if (helpers$par_recovery == "y") {
     parameters <- this_fit_df 
   }
-  
+
   sim_out_one_subj <- foreach (i = 1:n_iters) %do% {
     
     if (helpers$which_model == "RunBasicRLWM") {

@@ -54,6 +54,25 @@ LearnByRLStandard <- function(reward, stim, a, Q_mat_rl, alpha, debug_info=NULL)
 list("Q_mat_tplus1"=Q_mat_rl, "rpe"=rpe)
 }
 
+LearnByRLCooperative <- function(reward, 
+                                 stim, 
+                                 a, 
+                                 Q_mat_rl, 
+                                 alpha,
+                                 eta,
+                                 Q_WM,
+                                 debug_info=NULL) {
+  ### Calculate RPE and update Q value matrix using cooperative rule ###
+  
+  Q_RL <- Q_mat_rl[stim, a]
+  rpe <- reward - (eta * Q_RL + (1-eta) * Q_WM)
+  
+  #cat("\n\n\nReward", reward); cat("\neta", eta); cat("\nQ_RL", Q_RL); cat("\nQ_WM", Q_WM); cat("\nrpe", rpe)
+  Q_mat_rl[stim, a] <- Q_mat_rl[stim, a] + alpha*rpe
+  
+  list("Q_mat_tplus1"=Q_mat_rl, "rpe"=rpe)
+}
+
 LearnByCK <- function(stim, a, CK_mat, alpha_ck, debug_info=NULL) {
   ### Straight S-R learning, so always gets a +PE (or 0 if 1) for chosen action
   # Calculate CK RPE and update CK value matrix ###
@@ -91,30 +110,30 @@ LearnByRLCooperativeSimple <- function(reward, stim, a, Q_mat_rl, alpha, tib, W_
 list("Q_mat_tplus1"=Q_mat_rl, "rpe"=rpe)
 }
 
-LearnByRLCooperative <- function(reward, stim, a, Q_mat_rl, alpha, tib, W_wm, eta, n_s) {
-  ### Cooperative RLWM model where the RPE is downweighted based on WM usage ###
-  
-  rpe_reg <- reward - Q_mat_rl[stim, a]
-  # Take a chunk out of the RPE based on WM usage  
-  scaled_down_weight <- W_wm*eta
-  rpe <- (1-scaled_down_weight)*rpe_reg 
-  
-  # cat("\nSet size", n_s)
-  # cat("\nTrial", tib)
-  #cat("\n\nWM usage", W_wm)
-  # cat("\nEta", eta)
-  # cat("\nAlpha", alpha)
-  # cat("\nDownweighting (proportion of 1)", scaled_down_weight)
-  # cat("\nRPE before", rpe_reg)
-  # cat("\nRPE after", rpe)
-  # cat("\nQ(s,a) before update\n\n"); print(Q_mat_rl[stim, a])
-  
-  Q_mat_rl[stim, a] <- Q_mat_rl[stim, a] + alpha*rpe
-  
-  #cat("\nQ(s,a) after update\n\n"); print(Q_mat_rl[stim, a])
-  
-list("Q_mat_tplus1"=Q_mat_rl, "rpe"=rpe)
-}
+# LearnByRLCooperative <- function(reward, stim, a, Q_mat_rl, alpha, tib, W_wm, eta, n_s) {
+#   ### Cooperative RLWM model where the RPE is downweighted based on WM usage ###
+#   
+#   rpe_reg <- reward - Q_mat_rl[stim, a]
+#   # Take a chunk out of the RPE based on WM usage  
+#   scaled_down_weight <- W_wm*eta
+#   rpe <- (1-scaled_down_weight)*rpe_reg 
+#   
+#   # cat("\nSet size", n_s)
+#   # cat("\nTrial", tib)
+#   #cat("\n\nWM usage", W_wm)
+#   # cat("\nEta", eta)
+#   # cat("\nAlpha", alpha)
+#   # cat("\nDownweighting (proportion of 1)", scaled_down_weight)
+#   # cat("\nRPE before", rpe_reg)
+#   # cat("\nRPE after", rpe)
+#   # cat("\nQ(s,a) before update\n\n"); print(Q_mat_rl[stim, a])
+#   
+#   Q_mat_rl[stim, a] <- Q_mat_rl[stim, a] + alpha*rpe
+#   
+#   #cat("\nQ(s,a) after update\n\n"); print(Q_mat_rl[stim, a])
+#   
+# list("Q_mat_tplus1"=Q_mat_rl, "rpe"=rpe)
+# }
 
 UpdateUnchosenOptions <- function(state, 
                                   WM_Q_values, 

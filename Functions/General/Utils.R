@@ -108,14 +108,20 @@ ExtractEstimates <- function(traces) {
   est_df <- foreach (r = 1:ncol(traces)) %do% {
     # Take a trace..
     this_trace <- traces[r]
+    
+    # Edited 4/25/25 to use bayesTestR instead of extracting via quantiles
     # .. apply quantiles on it .. 
-    this_trace_quantile <- quantile(unlist(this_trace), seq(.1, .9, .2))
+    #this_trace_quantile <- quantile(unlist(this_trace), seq(.1, .9, .2))
+    
+    # Extract HDI  
+    this_trace_ci_out <- bayestestR::hdi(this_trace, ci=.9)
     
     # Package up to send out 
     dt_out <- data.table("coef"=names(this_trace),
-                         "lb_10"=this_trace_quantile[1], 
-                         "ub_90"=this_trace_quantile[length(this_trace_quantile)],
-                         "m"= mean(this_trace_quantile))
+                         "lb_10"=this_trace_ci_out$CI_low, 
+                         "ub_90"=this_trace_ci_out$CI_high,
+                         "m"= mean(unlist((this_trace))))
+    
     dt_out
   } %>% bind_rows()
   

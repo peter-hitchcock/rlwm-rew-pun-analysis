@@ -20,7 +20,7 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
   # to the same images and hence same correct key/values as in the standard task (but with wm values reset at the appropriate times)
   assert(length(unique(block$set_size))==1)
   assert(length(unique(block$stim_set))==1)
-
+  
   # Create a stim key to be used to identify states within the block *for both train and test* and used to idx value matrix rows 
   unique_stim <- unique(block$stim)
   stim_key <- list("stim"=unique_stim, "stim_id"=1:length(unique_stim))
@@ -41,13 +41,13 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
   
   for (i in 1:length(unique(these_test_stim))) test_stim_id[these_test_stim==unique_stim[i]] <- i
   test_stim_id <- as.numeric(test_stim_id)
-
+  
   # Spot check   
   # data.frame(learn_block %>% select(stim), learn_stim_id)
   # data.frame(test_block %>% select(stim), test_stim_id)
   
   if (par_recovery != "y") assert(n_s==length(unique(block$stim))) # Should be equal to the number of unique stim  
-
+  
   these_delays <- learn_block$delay
   
   these_stim_iters <- learn_block$stim_iter
@@ -185,7 +185,7 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
       } else {
         rho_t <- rho
       }
-
+      
     } else {
       # Otherwise rho is the param value — so ind diffs come into play  
       rho_t <- rho 
@@ -213,7 +213,7 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
     if (probs[1] < threshold || probs[2] < threshold || probs[3] < threshold) {
       probs[which(probs < threshold)] <- threshold
     }
-       
+    
     if (sim_opt=="opt") {
       trial_nlls <- -log(probs)
       assert("Probabilities must sum to 1", sum(probs) > .99999999 && sum(probs) < 1.00000001)
@@ -271,12 +271,12 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
       # To neutral in the case that's the chosen action
       Q_mat_wm[stim, action] <- not_pun_bonus
     }
-
+    
     if (outcome == -1) {
       # To the non punish indices whenever punish  
       Q_mat_wm[stim, -action] <- Q_mat_wm[stim, -action] + not_pun_bonus
     }
-
+    
     # Bound all WM values at 1
     gr1_idx <- which(Q_mat_wm[stim, ] > 1)
     Q_mat_wm[stim, gr1_idx] <- 1
@@ -298,7 +298,7 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
     # If delay is NA then it's the first trial of that stim iter in the phase, so learn by standard RL  
     if (is.na(delay_t)) {
       rl_out <- LearnByRLStandard(outcome, stim, action, Q_mat_rl, alpha_t)
-    # Otherwise use RL off  inv. proportional to delay 
+      # Otherwise use RL off  inv. proportional to delay 
     } else { 
       rl_off_t <- NULL
       rl_off_t <- if_else(delay_t == 0, rl_off, rl_off/delay_t)
@@ -327,7 +327,7 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
     if (sim_opt=="opt") learn_neg_log_liks[tib] <- trial_nlls[action] # For optimization
     
   } # End loop through trials 
-  
+   
   if (sim_opt=="sim") {
     #Code rpe group
     rpe_grp[which(rpes < 0)] <- "negative"
@@ -337,7 +337,7 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
   
   # Label the final RL Q matrix   
   final_Q_mat_rl <- Q_mat_rl
-
+  
   first_phase_2_test_trial <- min(which(test_block$phase==2))
   
   ## Loop through test trials  
@@ -390,47 +390,47 @@ RunRLWMPRew <- function(parameters, block, helpers, prior_Q_RL_values=NULL, eta=
     
   }
   
-if (sim_opt=="sim") {
-  assert("Choices must be *either* reward, neutral, or punishment", 
-         all(these_rewards+these_neutrals+(-these_punishments)==1))
-  
-  learn_df <- data.frame(
-    "actions"=actions,
-    "corrects"=these_rewards,
-    "worsts"=-these_punishments, # sign back to 1 for just indicating whether worst or not
-    "neutrals"=these_neutrals,
-    "rpes"=as.numeric(rpes),
-    "rpe_grp"=rpe_grp,
-    "stim_iter"=these_stim_iters,
-    "type"="learning",
-    "delay"=these_delays,
-    "wm_capacities"=wm_capacities
-  )
-  
-  test_df <- data.frame(
-    "actions"=test_actions,
-    "corrects"=these_test_rewards,
-    "worsts"=-these_test_punishments, # sign back to 1 for just indicating whether worst or not
-    "neutrals"=these_test_neutrals,
-    "rpes"=NA,
-    "rpe_grp"=NA,
-    "stim_iter"=NA,
-    "type"="test",
-    "delay"=NA,
-    "wm_capacities"=NA
-  )
-  
-  out_df <- rbind(learn_df, test_df)
-  out <- data.frame(out_df, parameters, "set_size"=n_s, "phase"=block$phase, 
-                    "stim_set"=block$stim_set, "stim"=block$stim)
-  
-} else {
-  # If optimization, output negative log likelihood so can
-  # minimize this 
-  neg_log_liks <- c(learn_neg_log_liks, test_neg_log_liks)
-  
-  assert(!is.na(neg_log_liks))
-  out <- sum(neg_log_liks) 
-}
+  if (sim_opt=="sim") {
+    assert("Choices must be *either* reward, neutral, or punishment", 
+           all(these_rewards+these_neutrals+(-these_punishments)==1))
+    
+    learn_df <- data.frame(
+      "actions"=actions,
+      "corrects"=these_rewards,
+      "worsts"=-these_punishments, # sign back to 1 for just indicating whether worst or not
+      "neutrals"=these_neutrals,
+      "rpes"=as.numeric(rpes),
+      "rpe_grp"=rpe_grp,
+      "stim_iter"=these_stim_iters,
+      "type"="learning",
+      "delay"=these_delays,
+      "wm_capacities"=wm_capacities
+    )
+    
+    test_df <- data.frame(
+      "actions"=test_actions,
+      "corrects"=these_test_rewards,
+      "worsts"=-these_test_punishments, # sign back to 1 for just indicating whether worst or not
+      "neutrals"=these_test_neutrals,
+      "rpes"=NA,
+      "rpe_grp"=NA,
+      "stim_iter"=NA,
+      "type"="test",
+      "delay"=NA,
+      "wm_capacities"=NA
+    )
+    
+    out_df <- rbind(learn_df, test_df)
+    out <- data.frame(out_df, parameters, "set_size"=n_s, "phase"=block$phase, 
+                      "stim_set"=block$stim_set, "stim"=block$stim)
+    
+  } else {
+    # If optimization, output negative log likelihood so can
+    # minimize this 
+    neg_log_liks <- c(learn_neg_log_liks, test_neg_log_liks)
+    
+    assert(!is.na(neg_log_liks))
+    out <- sum(neg_log_liks) 
+  }
 out
 }

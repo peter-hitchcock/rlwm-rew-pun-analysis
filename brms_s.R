@@ -1,5 +1,5 @@
 # BRMS models  
-which_model <- 5
+which_model <- 6
 #cluster <- 0 #^PUT BACK - but change for PR run locally  
 testing <- 1
 
@@ -80,10 +80,13 @@ if (which_model == 1) {
   model_str <- "reduced_perf_model_phase1"
   # Still divergent so simplify further
   this_fit <- brm(
-    correct ~ scale(depr_anx_sum)*scale(set_size) + (1|ID),
+    #correct ~ scale(depr_anx_sum)*scale(set_size) + (1|ID),
+    correct ~ scale(depr_anx_norm_sum)*scale(set_size) + (1|ID), # Revision corrected  
     data = learn_df %>% filter(phase==1), family = bernoulli(link = "logit"),
     warmup=2e3,
     iter=4e3,
+    # warmup=5,
+    # iter=10,
     chains=5,
     cores=5,
     control= list(adapt_delta = 0.9))
@@ -105,7 +108,8 @@ if (which_model == 2) {
   # Also still divergent so further simplified here
   model_str <- "reduced_correct_perf_model_phase2"
   this_fit <- brm(
-    correct ~ scale(depr_anx_sum)*scale(set_size) + (1|ID),
+    #correct ~ scale(depr_anx_sum)*scale(set_size) + (1|ID),
+    correct ~ scale(depr_anx_norm_sum)*scale(set_size) + (1|ID),
     data = learn_df %>% filter(phase==2), family = bernoulli(link = "logit"), 
     warmup=2e3, 
     iter=4e3, 
@@ -132,7 +136,8 @@ if (which_model == 3) {
   # Reduced bc of divergence  
   model_str <- "reduced_correct_test_model"
   this_fit <- brm(
-    correct ~ scale(depr_anx_sum) + (1 |ID),
+    #correct ~ scale(depr_anx_sum) + (1 |ID),
+    correct ~ scale(depr_anx_norm_sum) + (1 |ID),
     data = test_df, family = bernoulli(link = "logit"), 
     warmup=2e3, 
     iter=4e3, 
@@ -146,7 +151,8 @@ if (which_model == 4) {
   
   model_str <- "neutral_pref_learn_model"
   this_fit <- brm(
-    neutral ~ scale(depr_anx_sum) + (scale(depr_anx_sum) |ID),
+    #neutral ~ scale(depr_anx_sum) + (scale(depr_anx_sum) |ID),
+    neutral ~ scale(depr_anx_norm_sum) + (scale(depr_anx_norm_sum) |ID),
     data = learn_error_df, 
     family = bernoulli(link = "logit"), 
     warmup=2e3, 
@@ -200,7 +206,8 @@ if (which_model == 5) {
   # Trying intercept to 0 — this one worked  
   model_str <- "neutral_pref_test_model_0int"
   this_fit <- brm(
-    neutral ~ scale(depr_anx_sum) + (0 + scale(depr_anx_sum) |ID),
+    #neutral ~ scale(depr_anx_sum) + (0 + scale(depr_anx_sum) |ID),
+    neutral ~ scale(depr_anx_norm_sum) + (0 + scale(depr_anx_norm_sum) |ID),
     data = test_error_df,
     family = bernoulli(link = "logit"),
     warmup=15e3,
@@ -322,6 +329,24 @@ if (which_model == 13) {
   model_str <- "neutral_pref_test_effect"
   this_fit <- brm(
     neutral ~ 1 + (1 |ID),
+    data = test_error_df, 
+    family = bernoulli(link = "logit"), 
+    warmup=2e3, 
+    iter=4e3, 
+    chains=5, 
+    cores=5,
+    control= list(adapt_delta = 0.9))
+  
+}
+
+
+# R1  
+if (which_model == 14) {
+  
+  # Reduced model given divergences w phase RE   
+  model_str <- "neutral_pref_test_effect"
+  this_fit <- brm(
+    neutral ~ phase + (1 |ID),
     data = test_error_df, 
     family = bernoulli(link = "logit"), 
     warmup=2e3, 

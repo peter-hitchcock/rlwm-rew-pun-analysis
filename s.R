@@ -1,6 +1,6 @@
-which_model <- 35
-cluster <- 0 #^PUT BACK - but change for PR run locally  
-testing <- 1
+which_model <- 46
+cluster <- 1#0 #^PUT BACK - but change for PR run locally  
+testing <- 0
 # Streamlined version for public repo - 10/11/24  
 sim_opt <- "opt" 
 lesion_sim <- "n" # Whether to run final model with lesions to show key components — these are then saved with a different name  
@@ -281,6 +281,84 @@ if (which_model == 42) {
     "not_pun_bonus"
   )
   
+}
+
+## Models run for R1 ## 
+# Same as m35 but w beta as a free par  
+if (which_model == 43) {
+  helpers$which_model <- "RunRLWMPRewFreeBeta"
+  
+  helpers$par_names <- c(
+    # Kappa has non-standard range and must always come first  
+    "kappa",
+    # Remaining have standard ranges 
+    "alpha_pos",
+    "alpha_neg",
+    "phi",
+    "rho",
+    "rl_off",
+    "epsilon",
+    "not_pun_bonus",
+    "beta"
+  )
+  
+}
+
+if (which_model == 44) {
+  helpers$which_model <- "RunRLWMPRewNoAlphaNeg"
+  
+  helpers$par_names <- c(
+    # Kappa has non-standard range and must always come first  
+    "kappa",
+    # Remaining have standard ranges 
+    "alpha_pos",
+    "phi",
+    "rho",
+    "rl_off",
+    "epsilon",
+    "not_pun_bonus"
+  )
+  
+}
+
+if (which_model == 45) {
+  helpers$which_model <- "RunHWMPRewNoCKOff"
+  
+  helpers$par_names <- c(
+    # Kappa has non-standard range and must always come first  
+    "kappa",
+    # Remaining have standard ranges 
+    # "alpha_pos",
+    # "alpha_neg",
+    "learning_bias",
+    "alpha_ck",
+    "phi",
+    "rho",
+    #"ck_off",
+    "epsilon",
+    "not_pun_bonus"
+  )
+  
+}
+
+# Same as m35 but with a cooperative rather than competitive WM contribution a al Collins 18 PNAS 
+# (albeit it still effectively leads to a lower RL learning rate when WM is high)  
+if (which_model == 46) {
+  helpers$which_model <- "RunRLWMPRewRLCoop"
+  
+  helpers$par_names <- c(
+    # Kappa has non-standard range and must always come first  
+    "kappa",
+    # Remaining have standard ranges 
+    "alpha_pos",
+    "alpha_neg",
+    "phi",
+    "rho",
+    "eta",
+    "epsilon",
+    "not_pun_bonus"
+  )
+
 }
 
 #### OPTIMIZATION TEST BED ####  
